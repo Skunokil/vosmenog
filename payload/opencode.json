@@ -3,11 +3,5 @@
   "instructions": [
     "~/.config/opencode/memory/STARTUP.md",
     "~/agent-os/METHOD.md"
-  ],
-  "references": {
-    "memory": {
-      "path": "~/.config/opencode/memory",
-      "description": "Session memory journal. Read journal.md at session start, archive/ for past session details."
-    }
-  }
+  ]
 }
