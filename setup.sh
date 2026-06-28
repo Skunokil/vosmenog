@@ -33,7 +33,7 @@ fi
 
 # --- 1. Структура папок ------------------------------------
 say "Создание структуры"
-mkdir -p "$AGENT_OS" "$MEMORY/archive" "$AGENTS"
+mkdir -p "$AGENT_OS" "$MEMORY/archive" "$AGENTS" "$OC_CONF/skills"
 ok "$AGENT_OS, $MEMORY, $AGENTS"
 
 # --- 2. Раскладка payload ----------------------------------
@@ -44,6 +44,10 @@ for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.
 done
 
 cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
+
+if [ -d "$PAYLOAD/skills" ]; then
+  cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor и др.)"
+fi
 
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 if [ ! -f "$MEMORY/journal.md" ]; then

@@ -33,6 +33,13 @@ for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.
 done
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
 
+# 2b. разложить скиллы (метод-контент: чистые инструкции, прав не несут)
+SKILLS="$HOME/.config/opencode/skills"
+if [ -d "$PAYLOAD/skills" ]; then
+  mkdir -p "$SKILLS"
+  cp -r "$PAYLOAD/skills/." "$SKILLS/"; ok "skills/ (tutor и др.)"
+fi
+
 # 3. что НАМЕРЕННО не тронуто
 printf '\n'
 warn "НЕ тронуты (меняй через setup.sh осознанно):"
