@@ -49,6 +49,12 @@ if [ -d "$PAYLOAD/skills" ]; then
   cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor и др.)"
 fi
 
+# --- 2c. Кит головы (файлы для веб-Клода / Минотавра) ------
+if [ -d "$PAYLOAD/shared/skills" ]; then
+  mkdir -p "$AGENT_OS/head-kit"
+  cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (session_start, персона, workflow, правила)"
+fi
+
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 if [ ! -f "$MEMORY/journal.md" ]; then
   printf '# Journal — Session Log\n' > "$MEMORY/journal.md"; ok "memory/journal.md (создан)"

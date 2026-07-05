@@ -40,6 +40,12 @@ if [ -d "$PAYLOAD/skills" ]; then
   cp -r "$PAYLOAD/skills/." "$SKILLS/"; ok "skills/ (tutor и др.)"
 fi
 
+# 2c. кит головы (метод-контент для веб-Клода / Минотавра)
+if [ -d "$PAYLOAD/shared/skills" ]; then
+  mkdir -p "$AGENT_OS/head-kit"
+  cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
+fi
+
 # 3. что НАМЕРЕННО не тронуто
 printf '\n'
 warn "НЕ тронуты (меняй через setup.sh осознанно):"
