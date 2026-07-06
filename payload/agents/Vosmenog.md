@@ -35,9 +35,13 @@ permission:
     "rm -rf*": deny
     "sudo*": deny
     "docker*": ask
-  edit: ask
+  edit:
+    "*": ask
+    "~/projects/team-work/**": allow
   webfetch: deny
   external_directory:
+    "*": allow
+    "~/projects/team-work/**": allow
     "~/.config/opencode/memory/**": allow
     "~/.config/opencode/agents/**": deny
     # При установке сюда дописываются deny на боевые каталоги среды
