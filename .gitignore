@@ -1,6 +1,7 @@
-# Системное
+# локальные артефакты
+*.bak
+*.bak-*
 .DS_Store
-Thumbs.db
 *.swp
 *.swo
 *~
