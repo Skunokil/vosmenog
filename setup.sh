@@ -62,6 +62,16 @@ else
   warn "memory/journal.md уже есть — не трогаю (память сохранена)"
 fi
 
+# --- 2d. Маркер первого запуска ------------------------------
+say "Маркер первого запуска"
+FIRST_RUN="$OC_CONF/.first-run"
+if [ ! -f "$FIRST_RUN" ]; then
+  touch "$FIRST_RUN"
+  ok ".first-run создан (онбординг запустится при первом входе в opencode)"
+else
+  warn ".first-run уже существует — пропускаю"
+fi
+
 # --- 3. Слияние opencode.json (бережно) --------------------
 say "Конфиг opencode.json (instructions[])"
 CONF_FILE="$OC_CONF/opencode.json"
