@@ -39,9 +39,19 @@ ok "$AGENT_OS, $MEMORY, $AGENTS"
 # --- 2. Раскладка payload ----------------------------------
 say "Раскладка файлов фреймворка"
 for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md persona_vosya.md; do
+         project-slots.template.md; do
   if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
 done
+
+PERSONA_FILE="persona_vosya.md"
+if [ -f "$PAYLOAD/$PERSONA_FILE" ]; then
+  if [ ! -f "$AGENT_OS/$PERSONA_FILE" ]; then
+    cp "$PAYLOAD/$PERSONA_FILE" "$AGENT_OS/"
+    ok "agent-os/$PERSONA_FILE (установлен)"
+  else
+    warn "agent-os/$PERSONA_FILE уже есть — не перезаписан. Правь через проект, не в обход."
+  fi
+fi
 
 cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
 
@@ -60,6 +70,12 @@ if [ ! -f "$MEMORY/journal.md" ]; then
   printf '# Journal — Session Log\n' > "$MEMORY/journal.md"; ok "memory/journal.md (создан)"
 else
   warn "memory/journal.md уже есть — не трогаю (память сохранена)"
+fi
+# user-profile.md — журнальный паттерн (есть? → не трогаю)
+if [ ! -f "$MEMORY/user-profile.md" ]; then
+  cp "$PAYLOAD/user-profile.template.md" "$MEMORY/user-profile.md"; ok "memory/user-profile.md (создан)"
+else
+  warn "memory/user-profile.md уже есть — не трогаю (профиль сохранён)"
 fi
 
 # --- 2d. Маркер первого запуска ------------------------------

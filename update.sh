@@ -28,7 +28,7 @@ fi
 [ -d "$PAYLOAD" ] || die "нет payload/ — это точно клон репо?"
 mkdir -p "$AGENT_OS" "$MEMORY"
 for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md persona_vosya.md; do
+         project-slots.template.md; do
   if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
 done
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
@@ -48,7 +48,8 @@ fi
 
 # 3. что НАМЕРЕННО не тронуто
 printf '\n'
-warn "НЕ тронуты (меняй через setup.sh осознанно):"
+warn "НЕ тронуты (меняй через проект vosmenog осознанно):"
+echo "    • persona_vosya.md — персона (защищена от затирания)"
 echo "    • agents/Vosmenog.md — права и периметр"
 echo "    • opencode.json — конфиг"
 echo "    • journal.md / archive — память (данные)"
