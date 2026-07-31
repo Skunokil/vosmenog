@@ -20,21 +20,10 @@ tools:
   task: false
 permission:
   bash:
-    "*": ask
-    "ls*": allow
-    "cat *": allow
-    "grep *": allow
-    "find *": allow
-    "head *": allow
-    "tail *": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git push*": deny
-    "rm -rf*": deny
-    "sudo*": deny
-    "docker*": ask
+    "*": allow
+    "git push*": ask
+    "rm -rf*": ask
+    "sudo*": ask
   edit:
     "*": ask
     "~/projects/team-work/**": allow
@@ -44,6 +33,8 @@ permission:
     "~/projects/team-work/**": allow
     "~/.config/opencode/memory/**": allow
     "~/.config/opencode/agents/**": deny
+    "~/.ssh/**": deny
+    "**/.env": deny
     # При установке сюда дописываются deny на боевые каталоги среды
     # (общий стек, секреты, чужие конфиги). См. GUIDE, шаг «периметр».
     # Пример: "~/<твой-боевой-стек>/**": deny
