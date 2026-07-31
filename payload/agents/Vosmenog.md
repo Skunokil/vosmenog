@@ -16,7 +16,7 @@ tools:
   todowrite: true
   lsp: true
   skill: true
-  webfetch: false
+  webfetch: true
   task: false
 permission:
   bash:
@@ -27,7 +27,7 @@ permission:
   edit:
     "*": ask
     "~/projects/team-work/**": allow
-  webfetch: deny
+  webfetch: allow
   external_directory:
     "*": allow
     "~/projects/team-work/**": allow
