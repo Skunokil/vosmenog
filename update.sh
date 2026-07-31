@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Vosmenog — обновление метод-контента (безопасное)
-#  Тянет свежий репо и раскладывает ТОЛЬКО текст метода.
-#  НЕ трогает: права/периметр Vosmenog, конфиг opencode,
-#  журнал памяти, .bashrc. Их меняешь осознанно через setup.sh.
+#  Тянет свежий репо и раскладывает текст метода + конфиг агента
+#  (agents/Vosmenog.md раскатывается с ПЕРЕНОСОМ локального
+#  периметра: deny на боевые каталоги, дописанные setup.sh,
+#  не теряются). НЕ трогает: конфиг opencode, журнал памяти,
+#  .bashrc. Их меняешь осознанно через setup.sh.
 # ============================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PAYLOAD="$SCRIPT_DIR/payload"
 AGENT_OS="$HOME/agent-os"
-MEMORY="$HOME/.config/opencode/memory"
+OC_CONF="$HOME/.config/opencode"
+MEMORY="$OC_CONF/memory"
+AGENTS="$OC_CONF/agents"
 
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$1"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$1"; }
@@ -40,7 +44,53 @@ if [ -d "$PAYLOAD/skills" ]; then
   cp -r "$PAYLOAD/skills/." "$SKILLS/"; ok "skills/ (tutor и др.)"
 fi
 
-# 2c. кит головы (метод-контент для веб-Клода / Минотавра)
+# 2c. раскатать конфиг агента (agents/Vosmenog.md)
+#     с ПЕРЕНОСОМ локального периметра: deny на боевые каталоги,
+#     дописанные setup.sh, переносятся в свежий конфиг.
+if [ -f "$PAYLOAD/agents/Vosmenog.md" ]; then
+  mkdir -p "$AGENTS"
+  TMP_DENY=""
+  if [ -f "$AGENTS/Vosmenog.md" ]; then
+    TMP_DENY="$(mktemp)"
+    python3 - "$AGENTS/Vosmenog.md" "$PAYLOAD/agents/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
+import re, sys
+live, payload, out = sys.argv[1], sys.argv[2], sys.argv[3]
+def denies(src):
+    return set(re.findall(r'^\s{4}"([^"]+)": deny', src, re.M))
+# deny периметра = те, что есть в живом, но нет в дистрибутиве
+local = denies(open(live).read()) - denies(open(payload).read())
+# оставляем только пути (~/ или /); внутренние deny дистрибутива не трогаем
+keep = sorted(p for p in local if p.startswith("~/") or p.startswith("/"))
+open(out, "w").write("\n".join(keep))
+PYEOF
+  fi
+  cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"
+  if [ -n "$TMP_DENY" ] && [ -s "$TMP_DENY" ]; then
+    python3 - "$AGENTS/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
+import sys
+vfile, denies_file = sys.argv[1], sys.argv[2]
+src = open(vfile).read()
+marker = "    # При установке сюда дописываются"
+lines = []
+for p in open(denies_file):
+    p = p.strip()
+    if p:
+        rule = f'    "{p}": deny'
+        if rule not in src:
+            lines.append(rule)
+if lines and marker in src:
+    src = src.replace(marker, "\n".join(lines) + "\n" + marker, 1)
+    open(vfile, "w").write(src)
+    print("  перенесено deny:", ", ".join(p.strip() for p in open(denies_file) if p.strip()))
+else:
+    print("  нет локального периметра — переносить нечего")
+PYEOF
+  fi
+  [ -n "$TMP_DENY" ] && rm -f "$TMP_DENY"
+  ok "agents/Vosmenog.md (права и периметр)"
+fi
+
+# 2d. кит головы (метод-контент для веб-Клода / Минотавра)
 if [ -d "$PAYLOAD/shared/skills" ]; then
   mkdir -p "$AGENT_OS/head-kit"
   cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
@@ -50,7 +100,7 @@ fi
 printf '\n'
 warn "НЕ тронуты (меняй через проект vosmenog осознанно):"
 echo "    • persona_vosya.md — персона (защищена от затирания)"
-echo "    • agents/Vosmenog.md — права и периметр"
 echo "    • opencode.json — конфиг"
 echo "    • journal.md / archive — память (данные)"
+echo "    • deny-периметр среды — переносится при раскатке агента (см. блок 2c)"
 printf '\n\033[1;32m==> Готово. Метод обновлён, барьеры и память на месте.\033[0m\n'
