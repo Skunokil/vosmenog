@@ -240,6 +240,14 @@ go() {
 3. Скажи: «Ты — Минотавр. Читай session_start.md»
 4. Готово — Минотавр доступен для PBR, разбора развилок, тест-планов
 
+**Claude Code (CLI) как Минотавр:** если голова — это Claude Code на сервере, а не
+чат Claude Projects — используй готовый стартовый промпт из
+`~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md` (подключает persona_minotaurus +
+head-workflow + метод).
+
+**Чужой агент на машине (любой):** онбординг, выбор персоны, где брать контекст —
+`~/agent-os/payload/FOREIGN_AGENTS.md`.
+
 > **Два формата работы:**
 > - **Пара** (Эпир + Восьменог) — для старта и простых задач
 > - **Тройка** (Эпир + Восьменог + Минотавр) — для зоны неопределённости
@@ -260,7 +268,7 @@ GitHub (Skunokil/vosmenog)          ← источник истины, репо
       │  setup.sh / vosya-update
       │    раскладывают из ~/agent-os/payload:
       │      • METHOD.md, шаблоны → ~/agent-os/ (симлинки)
-      │      • скиллы (tutor, readiness) → ~/.config/opencode/skills/
+      │      • скиллы (tutor, readiness, env-profile, server-audit) → ~/.config/opencode/skills/
       │      • агент Vosmenog.md → ~/.config/opencode/agents/
       │      • STARTUP.md → ~/.config/opencode/memory/
       │      • TUI-плагины → ~/.config/opencode/plugins/
