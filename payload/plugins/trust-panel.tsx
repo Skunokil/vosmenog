@@ -53,22 +53,30 @@ function loadProfile(api: TuiPluginApi) {
   }
 }
 
-// переписать yaml-блок: активную ось раскомментировать, остальные закомментировать
+// переписать yaml-блок доверия: активную ось раскомментировать, остальные закомментировать
 function writeLevel(api: TuiPluginApi, axis: "trust_level" | "detail_level", level: string): boolean {
   const file = profilePath(api)
   try {
     const src = readFileSync(file, "utf8")
-    const fence = /```yaml([\s\S]*?)```/
-    const m = src.match(fence)
-    if (!m) return false
-    const next = m[1].replace(
+    // BUG-014-002: в файле может быть несколько yaml-блоков (пример recon_tools и т.п.) —
+    // берём именно блок с trust_level/detail_level, не первый попавшийся
+    const fence = /```yaml([\s\S]*?)```/g
+    let m: RegExpExecArray | null
+    let target: RegExpExecArray | null = null
+    while ((m = fence.exec(src)) !== null) {
+      if (/(?:trust_level|detail_level)/.test(m[1])) { target = m; break }
+    }
+    if (!target) return false
+    const next = target[1].replace(
       /^(\s*)#?\s*(trust_level|detail_level):\s*(\S+)(\s*#.*)?$/gm,
       (_, ind, key, val, comment) => {
         const active = key === axis && val === level
         return active ? `${ind}${key}: ${val}${comment ?? ""}` : `${ind}# ${key}: ${val}${comment ?? ""}`
       },
     )
-    writeFileSync(file, src.replace(fence, "```yaml" + next + "```"))
+    // если целевая строка не найдена — честный false (панель откатится), а не молчаливая запись без изменений
+    if (next === target[1]) return false
+    writeFileSync(file, src.replace(target[0], "```yaml" + next + "```"))
     return true
   } catch {
     return false

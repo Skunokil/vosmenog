@@ -34,7 +34,14 @@ fi
 mkdir -p "$AGENT_OS" "$MEMORY"
 for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
          project-slots.template.md; do
-  if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
+  if [ -f "$PAYLOAD/$f" ]; then
+    if [ -L "$AGENT_OS/$f" ]; then
+      # симлинк уже указывает на payload/$f — актуален после git pull, не копируем
+      ok "agent-os/$f (symlink)"
+    else
+      cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"
+    fi
+  fi
 done
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
 
