@@ -4,7 +4,8 @@
 #  Тянет свежий репо и раскладывает текст метода + конфиг агента
 #  (agents/Vosmenog.md раскатывается с ПЕРЕНОСОМ локального
 #  периметра: deny на боевые каталоги, дописанные setup.sh,
-#  не теряются). НЕ трогает: конфиг opencode, журнал памяти,
+#  не теряются) + TUI-плагины (tui.json, plugins/).
+#  НЕ трогает: конфиг opencode (opencode.json), журнал памяти,
 #  .bashrc. Их меняешь осознанно через setup.sh.
 # ============================================================
 set -euo pipefail
@@ -96,6 +97,15 @@ if [ -d "$PAYLOAD/shared/skills" ]; then
   cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
 fi
 
+# 2e. TUI-плагины (панель доверия и др.) — tui.json + plugins/
+if [ -f "$PAYLOAD/tui.json" ]; then
+  cp "$PAYLOAD/tui.json" "$OC_CONF/tui.json"; ok "tui.json (конфиг TUI-плагинов)"
+fi
+if [ -d "$PAYLOAD/plugins" ]; then
+  mkdir -p "$OC_CONF/plugins"
+  cp "$PAYLOAD/plugins/"*.tsx "$OC_CONF/plugins/" 2>/dev/null; ok "plugins/ (TUI-плагины)"
+fi
+
 # 3. что НАМЕРЕННО не тронуто
 printf '\n'
 warn "НЕ тронуты (меняй через проект vosmenog осознанно):"
@@ -103,4 +113,5 @@ echo "    • persona_vosya.md — персона (защищена от зат�
 echo "    • opencode.json — конфиг"
 echo "    • journal.md / archive — память (данные)"
 echo "    • deny-периметр среды — переносится при раскатке агента (см. блок 2c)"
+echo "    • tui.json — раскатывается из дистрибутива (перезаписью)"
 printf '\n\033[1;32m==> Готово. Метод обновлён, барьеры и память на месте.\033[0m\n'
