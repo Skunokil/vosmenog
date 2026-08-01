@@ -241,9 +241,17 @@ go() {
 4. Готово — Минотавр доступен для PBR, разбора развилок, тест-планов
 
 **Claude Code (CLI) как Минотавр:** если голова — это Claude Code на сервере, а не
-чат Claude Projects — используй готовый стартовый промпт из
-`~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md` (подключает persona_minotaurus +
-head-workflow + метод).
+чат Claude Projects — дай ему ссылку на самонастройку:
+
+```text
+прочитай ~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку
+```
+
+Claude Code сам: проверит файлы фреймворка, создаст `~/.claude/CLAUDE.md` с роутером
+(персона + воркфлоу + метод + обмен + доверие), стартует с уровнем доверия
+«обучающий» (минимальный), научится `go <project>` и обмену с Восьменогом через
+`team-work/<project>/exchange/{incoming,outgoing}`. Идемпотентно — можно повторять.
+Проверка: `cat ~/.claude/CLAUDE.md`.
 
 **Чужой агент на машине (любой):** онбординг, выбор персоны, где брать контекст —
 `~/agent-os/payload/FOREIGN_AGENTS.md`.
