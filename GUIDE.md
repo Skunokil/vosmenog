@@ -228,12 +228,14 @@ go() {
 - Проект растёт и появляется несколько параллельных эпиков
 
 **Что нужно:**
-- Проектное пространство в **Claude Projects** (claude.ai) или аналоге
+- Проектное пространство в **Claude Projects** (claude.ai) или аналоге — например,
+  **ChatGPT Custom GPT** (chatgpt.com), **Cursor** (правила/промпты проекта),
+  любой другой чат-агент с возможностью загрузить файлы-инструкции (QA #11)
 - Загрузить туда: `persona_minotaurus.md`, `head-workflow.md`, `dev-rules.md`,
   `session_start.md` (все из `~/agent-os/payload/shared/skills/`)
 
 **Как подключить:**
-1. Создай проект в Claude Projects
+1. Создай проект в Claude Projects (или аналог)
 2. Загрузи файлы головы из `~/agent-os/payload/shared/skills/`
 3. Скажи: «Ты — Минотавр. Читай session_start.md»
 4. Готово — Минотавр доступен для PBR, разбора развилок, тест-планов
