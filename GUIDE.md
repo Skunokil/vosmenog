@@ -260,7 +260,7 @@ GitHub (Skunokil/vosmenog)          ← источник истины, репо
       │  setup.sh / vosya-update
       │    раскладывают из ~/agent-os/payload:
       │      • METHOD.md, шаблоны → ~/agent-os/ (симлинки)
-      │      • скиллы (tutor) → ~/.config/opencode/skills/
+      │      • скиллы (tutor, readiness) → ~/.config/opencode/skills/
       │      • агент Vosmenog.md → ~/.config/opencode/agents/
       │      • STARTUP.md → ~/.config/opencode/memory/
       │      • TUI-плагины → ~/.config/opencode/plugins/
