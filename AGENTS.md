@@ -43,7 +43,15 @@ vosmenog/
   update.sh           # Скрипт обновления
   persona_vosya.md    # Персона агента-исполнителя
   payload/            # Установочные файлы
+    skills/           #   Скиллы (tutor, infra-bootstrap, ...) → ~/.config/opencode/skills
+    infra-project/    #   Эталон инфраструктурного проекта (бэкап restic+S3, шаблоны)
+    shared/skills/    #   Кит головы (персона Минотавра, head-workflow, session_start)
 ```
+
+> **Инфраструктурный проект:** работы вне продуктовых проектов (бэкап, ssh, git,
+> обновления) живут в `~/projects/infra` + `team-work/infra/`. Развёртывание —
+> скилл `infra-bootstrap` (см. `payload/skills/`), статус при старте — проверка
+> в STARTUP.md. Подробно: `METHOD.md` → раздел «Инфраструктурный проект (infra)».
 
 ---
 

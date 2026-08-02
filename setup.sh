@@ -56,7 +56,38 @@ fi
 cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
 
 if [ -d "$PAYLOAD/skills" ]; then
-  cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor и др.)"
+  cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor, infra-bootstrap и др.)"
+fi
+
+# --- 2b. Инфраструктурный проект (эталон для скилла infra-bootstrap) ---
+# Свежая установка получает заготовку ~/projects/infra + team-work/infra.
+# Идемпотентно: существующее не трогаем (владелец мог уже настроить бэкап).
+say "Инфраструктурный проект (~/projects/infra)"
+INFRA="$HOME/projects/infra"
+TEAM_INFRA="$HOME/projects/team-work/infra"
+if [ -d "$PAYLOAD/infra-project" ]; then
+  if [ ! -d "$INFRA" ]; then
+    mkdir -p "$INFRA"
+    cp "$PAYLOAD/infra-project/"*.sh \
+       "$PAYLOAD/infra-project/.env.example" \
+       "$PAYLOAD/infra-project/.gitignore" \
+       "$PAYLOAD/infra-project/AGENTS.md" \
+       "$PAYLOAD/infra-project/RESTORE.md" \
+       "$PAYLOAD/infra-project/ROADMAP.md" "$INFRA/"
+    chmod +x "$INFRA/"*.sh
+    ok "infra/ развёрнут (скрипты, шаблоны). Креды добавит владелец в .env"
+  else
+    warn "~/projects/infra уже есть — не трогаю"
+  fi
+  if [ ! -d "$TEAM_INFRA" ]; then
+    mkdir -p "$TEAM_INFRA/epics" "$TEAM_INFRA/backlog" "$TEAM_INFRA/sessions"
+    cp "$PAYLOAD/infra-project/epics/EPIC-001-backup.md" "$TEAM_INFRA/epics/"
+    cp "$PAYLOAD/infra-project/backlog/"*.md "$TEAM_INFRA/backlog/"
+    printf '# Journal — Infra\n' > "$TEAM_INFRA/sessions/journal.md"
+    ok "team-work/infra/ развёрнут (EPIC-001-backup эталон, backlog, journal)"
+  else
+    warn "~/projects/team-work/infra уже есть — не трогаю"
+  fi
 fi
 
 # --- 2c. Кит головы (файлы для веб-Клода / Минотавра) ------
