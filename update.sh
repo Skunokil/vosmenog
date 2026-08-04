@@ -25,8 +25,19 @@ printf '\n\033[1;36m==> Обновление Vosmenog (метод-контент
 
 # 1. подтянуть репо (только fast-forward — без молчаливых мержей)
 cd "$SCRIPT_DIR"
+OLD_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
 if ! git pull --ff-only; then
   die "git pull не прошёл (локальные правки или расхождение). Разберись вручную: cd $SCRIPT_DIR && git status"
+fi
+NEW_HEAD="$(git rev-parse HEAD)"
+
+if [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+  printf '\n\033[1;36m==> Что изменилось (%s..%s)\033[0m\n' "${OLD_HEAD:0:7}" "${NEW_HEAD:0:7}"
+  git log --oneline "$OLD_HEAD..$NEW_HEAD"
+  printf '\n  Файлы:\n'
+  git diff --name-only "$OLD_HEAD..$NEW_HEAD" | sed 's/^/    /'
+else
+  printf '\n  Уже на актуальной версии — новых коммитов нет.\n'
 fi
 
 # 2. разложить ТОЛЬКО метод-контент
