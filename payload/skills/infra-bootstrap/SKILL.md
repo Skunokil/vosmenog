@@ -84,13 +84,33 @@ ssh -o StrictHostKeyChecking=accept-new -T git@github.com
 - Pending kernel upgrade → предложить ребут (`sudo shutdown -r +1`), предупредить об обрыве сессии, проверить после (контейнеры Up, cron жив).
 - После ребута — проверка бэкапа и сервисов.
 
-## Шаг 5 — финальная проверка
+## Шаг 5 — защита от OOM (новая машина без неё небезопасна)
+
+Свежий VPS обычно идёт **без swap** и без защиты от OOM-killer. Пока памяти
+хватает, это незаметно; в первый же пик ядро начинает молча расстреливать
+процессы — включая `systemd` и `dbus` пользовательских сессий.
+
+Минимум для любой машины:
+
+```bash
+swapon --show                                   # пусто = swap нет
+systemctl is-active earlyoom                    # inactive/not-found = защиты нет
+docker ps -q | xargs -r docker inspect --format '{{.Name}} {{.HostConfig.Memory}}'
+```
+
+Если чего-то нет — разворачивай по скиллу **`oom-guard`** (swap → earlyoom →
+защита `sshd` → лимиты контейнерам). Работы оформляй как эпик в
+`team-work/infra/`; правка compose и рестарт контейнеров — прод, нужен `go`.
+
+## Шаг 6 — финальная проверка
 
 ```bash
 restic snapshots            # после source .env — снапшоты есть
 docker ps                   # контейнеры Up (restart: unless-stopped)
 crontab -l                  # задача бэкапа на месте
 tail -5 ~/projects/infra/backup.log
+swapon --show               # swap есть
+systemctl is-active earlyoom  # защита от OOM работает
 ```
 
 Доложи владельцу: что развёрнуто, что осталось (например, «проверка cron 2+ суток → resolve»).

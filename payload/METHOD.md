@@ -234,6 +234,7 @@ Projects можно добавить скилл — так и у нас. При 
 | БД (миграции) | Alembic safety, seed patterns | `tech-docs/` проекта |
 | Инфра (деплой) | Caddy/Docker patterns, rollback | `tech-docs/` проекта |
 | Инфра (развёртывание окружения: бэкап, ssh, git) | `infra-bootstrap` | `skills/` (в payload) |
+| Инфра (машина тормозит, сервисы падают молча: swap, OOM, лимиты памяти) | `oom-guard` | `skills/` (в payload) |
 | Тестирование | Regression checklist | `tech-docs/` проекта |
 | Метод | Tutor (онбординг), PBR-чеклист | `shared/skills/` |
 
