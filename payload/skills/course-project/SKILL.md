@@ -138,9 +138,13 @@ mkdir -p ~/projects/<name>/docs
 
 **2. Операционка (эпики, бэклог, журнал сессий).**
 ```bash
-mkdir -p ~/projects/team-work/<name>/{epics,bugs,backlog,sessions/archive}
-echo "# Journal — <name>" > ~/projects/team-work/<name>/sessions/journal.md
+mkdir -p ~/projects/team-work/<name>/{epics,bugs,backlog,sessions/archive,exchange/incoming,exchange/outgoing}
+cp ~/.config/opencode/skills/course-project/template/journal.md ~/projects/team-work/<name>/sessions/journal.md
+sed -i "s/{{PROJECT}}/<name>/g" ~/projects/team-work/<name>/sessions/journal.md
 ```
+Журнал не пустой намеренно: в его шапке лежит ритуал старта сессии. По методу агент
+читает этот файл первым при входе в проект — значит напоминание про ось доверия
+сработает в каждой новой сессии, а не только пока висит этот скилл.
 Команду `vosya-new-project <name>` **не зови** — твой bash неинтерактивный, функции
 из `~/.bashrc` в нём не определены, получишь `command not found`. Она делает ровно то
 же самое и доступна участнику из его собственного терминала — упомяни это, если он
