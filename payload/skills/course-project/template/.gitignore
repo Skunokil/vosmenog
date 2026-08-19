@@ -1,0 +1,14 @@
+# Секреты — никогда в репозиторий
+.env
+.env.*
+*.key
+*.pem
+
+# Мусор окружения
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+build/
+.DS_Store
