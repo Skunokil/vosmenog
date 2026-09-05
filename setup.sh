@@ -84,6 +84,7 @@ if [ -d "$PAYLOAD/infra-project" ]; then
     cp "$PAYLOAD/infra-project/epics/EPIC-001-backup.md" "$TEAM_INFRA/epics/"
     cp "$PAYLOAD/infra-project/backlog/"*.md "$TEAM_INFRA/backlog/"
     printf '# Journal — Infra\n' > "$TEAM_INFRA/sessions/journal.md"
+    sed 's/<проект>/infra/' "$PAYLOAD/next-session.template.md" > "$TEAM_INFRA/sessions/next-session.md"
     ok "team-work/infra/ развёрнут (EPIC-001-backup эталон, backlog, journal)"
   else
     warn "~/projects/team-work/infra уже есть — не трогаю"
@@ -97,6 +98,8 @@ if [ -d "$PAYLOAD/shared/skills" ]; then
 fi
 
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
+cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
+cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
 if [ ! -f "$MEMORY/journal.md" ]; then
   printf '# Journal — Session Log\n' > "$MEMORY/journal.md"; ok "memory/journal.md (создан)"
 else

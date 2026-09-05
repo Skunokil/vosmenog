@@ -55,6 +55,12 @@ for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.
   fi
 done
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
+cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
+
+# 2a. глобальный слот инструкций opencode.
+#     opencode берёт первый существующий из [<config>/AGENTS.md, ~/.claude/CLAUDE.md]:
+#     пустой первый слот = чужой роутер (Claude Code) затекает в контекст агента.
+cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
 
 # 2b. разложить скиллы (метод-контент: чистые инструкции, прав не несут)
 SKILLS="$HOME/.config/opencode/skills"
