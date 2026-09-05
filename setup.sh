@@ -97,6 +97,10 @@ if [ -d "$PAYLOAD/shared/skills" ]; then
   cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (session_start, персона, workflow, правила)"
 fi
 
+if [ -d "$PAYLOAD/method" ]; then
+  mkdir -p "$AGENT_OS/method"
+  cp "$PAYLOAD/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
+fi
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
 cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"

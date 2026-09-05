@@ -67,6 +67,10 @@ for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.
     fi
   fi
 done
+if [ -d "$PAYLOAD/method" ]; then
+  mkdir -p "$AGENT_OS/method"
+  cp "$PAYLOAD/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
+fi
 cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
 cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
 
