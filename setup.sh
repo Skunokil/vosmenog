@@ -39,7 +39,7 @@ ok "$AGENT_OS, $MEMORY, $AGENTS"
 # --- 2. Раскладка payload ----------------------------------
 say "Раскладка файлов фреймворка"
 for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md; do
+         project-slots.template.md ROADMAP.template.md; do
   if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
 done
 

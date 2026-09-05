@@ -31,6 +31,19 @@ if ! git pull --ff-only; then
 fi
 NEW_HEAD="$(git rev-parse HEAD)"
 
+# 1b. перезапуск, если pull обновил сам этот скрипт.
+#     bash дочитывает файл по ходу исполнения: если git pull подменил update.sh
+#     под ним, дальше выполняются куски вперемешку со старым кодом, и шаги,
+#     добавленные обновлением, молча не применяются (скрипт при этом
+#     рапортует «Готово»). Перезапускаемся ровно один раз, флагом от рекурсии,
+#     передав исходный HEAD, чтобы changelog не потерялся.
+if [ "${VOSMENOG_UPDATE_RESTARTED:-}" != "1" ] && [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+  export VOSMENOG_UPDATE_RESTARTED=1
+  export VOSMENOG_UPDATE_OLD_HEAD="$OLD_HEAD"
+  exec bash "$SCRIPT_DIR/update.sh" "$@"
+fi
+[ -n "${VOSMENOG_UPDATE_OLD_HEAD:-}" ] && OLD_HEAD="$VOSMENOG_UPDATE_OLD_HEAD"
+
 if [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
   printf '\n\033[1;36m==> Что изменилось (%s..%s)\033[0m\n' "${OLD_HEAD:0:7}" "${NEW_HEAD:0:7}"
   git log --oneline "$OLD_HEAD..$NEW_HEAD"
@@ -44,7 +57,7 @@ fi
 [ -d "$PAYLOAD" ] || die "нет payload/ — это точно клон репо?"
 mkdir -p "$AGENT_OS" "$MEMORY"
 for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md; do
+         project-slots.template.md ROADMAP.template.md; do
   if [ -f "$PAYLOAD/$f" ]; then
     if [ -L "$AGENT_OS/$f" ]; then
       # симлинк уже указывает на payload/$f — актуален после git pull, не копируем
