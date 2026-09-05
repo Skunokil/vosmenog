@@ -74,6 +74,7 @@ cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "m
 #     opencode берёт первый существующий из [<config>/AGENTS.md, ~/.claude/CLAUDE.md]:
 #     пустой первый слот = чужой роутер (Claude Code) затекает в контекст агента.
 cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
+cp "$PAYLOAD/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
 
 # 2b. разложить скиллы (метод-контент: чистые инструкции, прав не несут)
 SKILLS="$HOME/.config/opencode/skills"
