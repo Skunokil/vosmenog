@@ -232,11 +232,11 @@ go() {
   **ChatGPT Custom GPT** (chatgpt.com), **Cursor** (правила/промпты проекта),
   любой другой чат-агент с возможностью загрузить файлы-инструкции (QA #11)
 - Загрузить туда: `persona_minotaurus.md`, `head-workflow.md`, `dev-rules.md`,
-  `session_start.md` (все из `~/agent-os/payload/shared/skills/`)
+  `session_start.md` (все из `~/agent-os/head-kit/`)
 
 **Как подключить:**
 1. Создай проект в Claude Projects (или аналог)
-2. Загрузи файлы головы из `~/agent-os/payload/shared/skills/`
+2. Загрузи файлы головы из `~/agent-os/head-kit/`
 3. Скажи: «Ты — Минотавр. Читай session_start.md»
 4. Готово — Минотавр доступен для PBR, разбора развилок, тест-планов
 
@@ -244,7 +244,7 @@ go() {
 чат Claude Projects — дай ему ссылку на самонастройку:
 
 ```text
-прочитай ~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку
+прочитай ~/agent-os/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку
 ```
 
 Claude Code сам: проверит файлы фреймворка, создаст `~/.claude/CLAUDE.md` с роутером
@@ -254,7 +254,7 @@ Claude Code сам: проверит файлы фреймворка, созда
 Проверка: `cat ~/.claude/CLAUDE.md`.
 
 **Чужой агент на машине (любой):** онбординг, выбор персоны, где брать контекст —
-`~/agent-os/payload/FOREIGN_AGENTS.md`.
+`~/agent-os/FOREIGN_AGENTS.md`.
 
 > **Два формата работы:**
 > - **Пара** (Эпир + Восьменог) — для старта и простых задач
@@ -270,17 +270,20 @@ Claude Code сам: проверит файлы фреймворка, созда
 
 ```
 GitHub (Skunokil/vosmenog)          ← источник истины, репо
-      │  установка: git clone (SSH)
+      │  git clone (SSH)
       ▼
-~/agent-os                           ← «дистрибутив на сервере» = это и есть клон репо
-      │  setup.sh / vosya-update
-      │    раскладывают из ~/agent-os/payload:
-      │      • METHOD.md, шаблоны → ~/agent-os/ (симлинки)
+<источник>                           ← клон репо (у владельца: ~/projects/vosmenog)
+      │  setup.sh / update.sh — запускаются ОТСЮДА
+      │    раскладывают из <источник>/payload:
+      │      • METHOD.md, GUIDE, шаблоны, доки → ~/agent-os/ (копиями)
+      │      • персона → ~/agent-os/ (не поверх ручной правки)
       │      • скиллы (tutor, readiness, env-profile, server-audit, oom-guard) → ~/.config/opencode/skills/
       │      • агент Vosmenog.md → ~/.config/opencode/agents/
       │      • STARTUP.md → ~/.config/opencode/memory/
       │      • TUI-плагины → ~/.config/opencode/plugins/
       │      • кит головы → ~/agent-os/head-kit/
+      ▼
+~/agent-os                           ← УСТАНОВКА: только копии, своего git нет
       ▼
 ~/.config/opencode/                  ← живой конфиг, из которого работает агент
 ```

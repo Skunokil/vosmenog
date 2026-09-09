@@ -9,7 +9,7 @@
 | Тип | Где | Формат |
 |-----|-----|--------|
 | **Режимы opencode** | `~/.config/opencode/agents/` | YAML frontmatter + MD-тело |
-| **Головы (облачные)** | `~/agent-os/payload/shared/skills/` или Claude Projects | session_start.md + persona + workflow |
+| **Головы (облачные)** | `~/agent-os/head-kit/` или Claude Projects | session_start.md + persona + workflow |
 | **Скиллы** | `~/.config/opencode/skills/` | YAML frontmatter + MD-тело |
 
 **Режим opencode** — агент работает на сервере (через opencode), с правами из frontmatter.
@@ -98,7 +98,7 @@ opencode agent list
 
 ### Шаг 2: Загрузи файлы
 
-Из `~/agent-os/payload/shared/skills/` или создай свои:
+Из `~/agent-os/head-kit/` или создай свои:
 - `session_start.md` — роутинг (обязательно)
 - `persona_<name>.md` — персона и характер
 - `<name>-workflow.md` — воркфлоу взаимодействия

@@ -12,8 +12,8 @@
 ## ДЛЯ ВЛАДЕЛЬЦА: как пользоваться
 
 1. Скажи Claude Code:
-   `прочитай ~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку`
-   (путь после раскатки — `~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md`; до неё —
+   `прочитай ~/agent-os/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку`
+   (путь после раскатки — `~/agent-os/CLAUDE_CODE_MINOTAUR.md`; до неё —
    `~/projects/vosmenog/payload/CLAUDE_CODE_MINOTAUR.md`).
 2. Claude Code выполнит шаги сам: проверит файлы → создаст `~/.claude/CLAUDE.md`
    с роутером → проверит обмен и доверие → доложит.
@@ -43,12 +43,12 @@
 Убедись, что существуют все пути (иначе доложи владельцу и остановись):
 
 ```
-~/agent-os/payload/shared/skills/persona_minotaurus.md   (персона — голос, тон)
-~/agent-os/payload/shared/skills/head-workflow.md        (воркфлоу головы)
-~/agent-os/payload/shared/skills/session_start.md        (роутер входа головы)
-~/agent-os/payload/shared/skills/dev-rules.md            (правила разработки)
+~/agent-os/head-kit/persona_minotaurus.md   (персона — голос, тон)
+~/agent-os/head-kit/head-workflow.md        (воркфлоу головы)
+~/agent-os/head-kit/session_start.md        (роутер входа головы)
+~/agent-os/head-kit/dev-rules.md            (правила разработки)
 ~/agent-os/METHOD.md                                     (метод ЭВМ: стопы, эпик-цикл)
-~/agent-os/payload/FOREIGN_AGENTS.md                     (онбординг внешних агентов)
+~/agent-os/FOREIGN_AGENTS.md                     (онбординг внешних агентов)
 ~/.config/opencode/memory/journal.md                     (память сервера)
 ```
 
@@ -87,8 +87,8 @@
 Разверни индикатор и команду смены (идемпотентно, файлы из дистрибутива):
 
 ```bash
-cp ~/agent-os/payload/statusline.sh ~/.claude/statusline.sh && chmod +x ~/.claude/statusline.sh
-mkdir -p ~/.claude/commands && cp ~/agent-os/payload/commands/trust.md ~/.claude/commands/trust.md
+cp ~/agent-os/head-kit/statusline.sh ~/.claude/statusline.sh && chmod +x ~/.claude/statusline.sh
+mkdir -p ~/.claude/commands && cp ~/agent-os/head-kit/trust.md ~/.claude/commands/trust.md
 ```
 
 Убедись, что `~/.claude/settings.json` подключает statusLine
@@ -112,10 +112,10 @@ mkdir -p ~/.claude/commands && cp ~/agent-os/payload/commands/trust.md ~/.claude
 НЕ начинай исследование машины с нуля и НЕ работай как исполнитель-Восьменог.
 
 ## Читай перед работой (в этом порядке)
-1. ~/agent-os/payload/shared/skills/persona_minotaurus.md  — персона (голос, тон, границы)
-2. ~/agent-os/payload/shared/skills/head-workflow.md       — воркфлоу головы (роли, обмен)
+1. ~/agent-os/head-kit/persona_minotaurus.md  — персона (голос, тон, границы)
+2. ~/agent-os/head-kit/head-workflow.md       — воркфлоу головы (роли, обмен)
 3. ~/agent-os/METHOD.md                                    — метод ЭВМ (стопы, эпик-цикл)
-4. ~/agent-os/payload/FOREIGN_AGENTS.md                    — онбординг внешних агентов
+4. ~/agent-os/FOREIGN_AGENTS.md                    — онбординг внешних агентов
 5. ~/.config/opencode/memory/journal.md                    — память сервера (контекст смены)
 
 ## Проект (go <project>)

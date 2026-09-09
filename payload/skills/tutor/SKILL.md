@@ -222,7 +222,7 @@ practике, что такое «рекон живого, а не догадка
 - **Способ А — чат-проект (без установки).** Заводишь проектное пространство в
   Claude Projects, ChatGPT Custom GPT, Cursor — в любом чат-агенте, куда можно
   положить файлы-инструкции. Загружаешь туда четыре файла из
-  `~/agent-os/payload/shared/skills/`: `persona_minotaurus.md`, `head-workflow.md`,
+  `~/agent-os/head-kit/`: `persona_minotaurus.md`, `head-workflow.md`,
   `dev-rules.md`, `session_start.md`. Пишешь: «Ты — Минотавр. Читай session_start.md».
   Готово. Ничего на машину ставить не надо — голова живёт в браузере.
 - **Способ Б — Claude Code на этой же машине (сам себя настроит).** Если у тебя
@@ -230,7 +230,7 @@ practике, что такое «рекон живого, а не догадка
   со мной. Одна фраза ему:
 
   ```text
-  прочитай ~/agent-os/payload/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку
+  прочитай ~/agent-os/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку
   ```
 
   Дальше он делает всё сам: проверит файлы фреймворка, создаст себе роутер

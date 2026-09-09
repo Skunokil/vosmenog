@@ -70,17 +70,52 @@ fi
 # 2. разложить ТОЛЬКО метод-контент
 [ -d "$PAYLOAD" ] || die "нет payload/ — это точно клон репо?"
 mkdir -p "$AGENT_OS" "$MEMORY"
-for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
+# Копируем ВСЕГДА, снимая симлинк, если он остался от старой схемы.
+# Раньше здесь была ветка «на месте симлинк → он актуален после git pull,
+# не копируем». Она была верна, пока установка была git-клоном. После снятия
+# .git (2026-09-09) симлинк стал указывать на замороженный payload, и файл
+# переставал обновляться молча. Установка копий не боится: она никуда не пушится.
+for f in METHOD.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md \
+         FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md \
+         EPIC.template.md TASK.template.md BUG.template.md \
          project-slots.template.md ROADMAP.template.md; do
-  if [ -f "$PAYLOAD/$f" ]; then
-    if [ -L "$AGENT_OS/$f" ]; then
-      # симлинк уже указывает на payload/$f — актуален после git pull, не копируем
-      ok "agent-os/$f (symlink)"
-    else
-      cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"
-    fi
+  SRC_F="$PAYLOAD/$f"
+  [ -f "$SRC_F" ] || SRC_F="$SCRIPT_DIR/$f"      # часть доков лежит в корне репо
+  if [ -f "$SRC_F" ]; then
+    [ -L "$AGENT_OS/$f" ] && rm -f "$AGENT_OS/$f"
+    cp "$SRC_F" "$AGENT_OS/"; ok "agent-os/$f"
   fi
 done
+# 2-bis. персона: раскатывается с УМНОЙ защитой.
+#   Раньше персона не обновлялась никогда («защищена от затирания») — при
+#   git-клоне её подтягивал pull, а после снятия .git защита превратилась в
+#   заморозку: правки дистрибутива до агента не доезжали.
+#   Теперь: помним хеш того, что раскатали в прошлый раз. Совпадает с тем, что
+#   лежит → человек не трогал, спокойно обновляем. Не совпадает → правил
+#   человек, не трогаем и говорим об этом вслух.
+PERSONA="persona_vosya.md"
+PERSONA_HASH_FILE="$OC_CONF/.vosmenog-persona-hash"
+if [ -f "$PAYLOAD/$PERSONA" ]; then
+  [ -L "$AGENT_OS/$PERSONA" ] && rm -f "$AGENT_OS/$PERSONA"
+  if [ ! -f "$AGENT_OS/$PERSONA" ]; then
+    cp "$PAYLOAD/$PERSONA" "$AGENT_OS/$PERSONA"
+    md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
+    ok "agent-os/$PERSONA (персона поставлена)"
+  else
+    CUR="$(md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1)"
+    PREV="$(cat "$PERSONA_HASH_FILE" 2>/dev/null || true)"
+    if [ -n "$PREV" ] && [ "$CUR" != "$PREV" ]; then
+      warn "$PERSONA правлена руками — НЕ обновляю (твоя настройка голоса важнее)."
+      printf '        diff %s %s\n' "$AGENT_OS/$PERSONA" "$PAYLOAD/$PERSONA"
+      printf '        правку стоит перенести в источник, иначе она не переживёт переустановку\n'
+    else
+      cp "$PAYLOAD/$PERSONA" "$AGENT_OS/$PERSONA"
+      md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
+      ok "agent-os/$PERSONA (персона обновлена)"
+    fi
+  fi
+fi
+
 if [ -d "$PAYLOAD/method" ]; then
   mkdir -p "$AGENT_OS/method"
   cp "$PAYLOAD/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
@@ -93,6 +128,7 @@ cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "m
 #     пустой первый слот = чужой роутер (Claude Code) затекает в контекст агента.
 cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
 cp "$PAYLOAD/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
+cp "$PAYLOAD/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений)"
 
 # 2b. разложить скиллы (метод-контент: чистые инструкции, прав не несут)
 SKILLS="$HOME/.config/opencode/skills"
@@ -151,6 +187,11 @@ fi
 if [ -d "$PAYLOAD/shared/skills" ]; then
   mkdir -p "$AGENT_OS/head-kit"
   cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
+  # индикатор доверия и команда смены — тоже инструменты головы (Claude Code):
+  # раньше их брали из payload установки, который после снятия .git стал мёртв.
+  [ -f "$PAYLOAD/statusline.sh" ] && cp "$PAYLOAD/statusline.sh" "$AGENT_OS/head-kit/statusline.sh"
+  [ -f "$PAYLOAD/commands/trust.md" ] && cp "$PAYLOAD/commands/trust.md" "$AGENT_OS/head-kit/trust.md"
+  ok "agent-os/head-kit/statusline.sh + trust.md (инструменты головы)"
 fi
 
 # 2e. TUI-плагины (панель доверия и др.) — tui.json + plugins/
@@ -173,7 +214,7 @@ ok ".vosmenog-source + .vosmenog-deployed (откуда раскатано и н
 # 3. что НАМЕРЕННО не тронуто
 printf '\n'
 warn "НЕ тронуты (меняй через проект vosmenog осознанно):"
-echo "    • persona_vosya.md — персона (защищена от затирания)"
+echo "    • persona_vosya.md — обновляется, но НЕ поверх ручной правки (см. выше)"
 echo "    • opencode.json — конфиг"
 echo "    • journal.md / archive — память (данные)"
 echo "    • .vosmenog-changelog-seen — маркер показанного changelog (состояние сессии)"

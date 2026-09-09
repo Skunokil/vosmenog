@@ -52,7 +52,7 @@
 | Что нужно | Где взять |
 |-----------|-----------|
 | Метод | `~/agent-os/METHOD.md`, `~/agent-os/ONBOARDING.md` |
-| Персоны | `~/agent-os/persona_vosya.md`, `~/agent-os/payload/shared/skills/persona_minotaurus.md`, `head-workflow.md`, `session_start.md` |
+| Персоны | `~/agent-os/persona_vosya.md`, `~/agent-os/head-kit/persona_minotaurus.md`, `head-workflow.md`, `session_start.md` |
 | Память сессий | `~/.config/opencode/memory/journal.md` + `archive/` (общая память) |
 | Проекты | `~/projects/team-work/<project>/sessions/journal.md`, `epics/`, `backlog/`, `exchange/{incoming,outgoing}` |
 | Карта проекта | `~/projects/<project>/AGENTS.md` (или CLAUDE.md как fallback) |
