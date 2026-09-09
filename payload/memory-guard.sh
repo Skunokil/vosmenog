@@ -89,5 +89,24 @@ if [ "$boot" -gt "$MAX_BOOT" ]; then
   done | sort -rn | head -3 | sed 's/^/      /'
 fi
 
-[ "$found" -eq 1 ] && printf '  (сторож памяти: EPIC-019, METHOD → «Память смены»)\n'
+# указатель памяти (EPIC-022): индекс — первый шаг поиска, поэтому отставший
+# индекс молча отправляет агента обратно в греп. Сверяем СОСТАВ, не содержание:
+# число записей против числа закрытых документов. Правило без проверки —
+# пожелание, это уже проверено на пороге журнала.
+INDEX="$DIR/_index.md"
+ROOT="$(dirname "$DIR")"
+if [ -d "$ROOT/epics" ]; then
+  if [ -f "$INDEX" ]; then
+    entries=$(grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2} ' "$INDEX" || true)
+    closed=$(grep -lE '^\*\*id:\*\*.*\*\*Статус:\*\* *resolved' \
+               "$ROOT"/epics/*.md "$ROOT"/bugs/*.md 2>/dev/null | wc -l)
+    if [ "$entries" -lt "$closed" ]; then
+      say "_index.md отстал: $entries записей при $closed закрытых документах. Допиши недостающие (адрес + 3–5 ключевых слов) — иначе поиск уходит в греп."
+    fi
+  else
+    say "_index.md отсутствует — поиск по холодной памяти пойдёт грепом. Завести: sessions/_index.md, формат в STARTUP.md."
+  fi
+fi
+
+[ "$found" -eq 1 ] && printf '  (сторож памяти: EPIC-019 и EPIC-022, METHOD → «Память смены»)\n'
 exit 0
