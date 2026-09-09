@@ -25,6 +25,24 @@ printf '\n\033[1;36m==> Обновление Vosmenog (метод-контент
 
 # 1. подтянуть репо (только fast-forward — без молчаливых мержей)
 cd "$SCRIPT_DIR"
+
+# 1a. сторож раскатки: локальные правки здесь — тупик.
+#     Раскатка не пушится никуда: правка в ней НЕ теряется при pull (ff-only
+#     проходит мимо, если апстрим не трогал тот же файл) — она тихо живёт и
+#     расходится с дистрибутивом, пока однажды не будет затёрта. Молча.
+#     Untracked не смотрим: раскатанные копии (METHOD.md, head-kit/, method/…)
+#     лежат здесь всегда и шумели бы каждый запуск.
+DIRTY="$(git status --porcelain --untracked-files=no 2>/dev/null || true)"
+if [ -n "$DIRTY" ]; then
+  warn "в раскатке есть НЕзакоммиченные правки — в дистрибутив они не уедут:"
+  printf '%s\n' "$DIRTY" | sed 's/^/      /'
+  warn "перенеси их в рабочий клон, иначе разойдутся с методом:"
+  printf '        git -C %s diff > /tmp/vosmenog-local.patch\n' "$SCRIPT_DIR"
+  printf '        cd <рабочий клон> && git apply /tmp/vosmenog-local.patch\n'
+  warn "раскатку не останавливаю — но правка выше остаётся только на этой машине."
+  printf '\n'
+fi
+
 OLD_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
 if ! git pull --ff-only; then
   die "git pull не прошёл (локальные правки или расхождение). Разберись вручную: cd $SCRIPT_DIR && git status"
