@@ -10,6 +10,13 @@
 # ============================================================
 set -uo pipefail
 
+# --peek — показать, НИЧЕГО не отмечая. Нужен для диагностики: обычный запуск
+# ставит отметку «показано», и проверка, сделанная другой персоной или второй
+# сессией, гасит уведомление для того, кому оно предназначалось (проверено на
+# живом 2026-09-10: голова прогнала сторож — руки при старте промолчали).
+PEEK=0
+[ "${1:-}" = "--peek" ] && PEEK=1
+
 OC_CONF="$HOME/.config/opencode"
 MEMORY="$OC_CONF/memory"
 SEEN_FILE="$MEMORY/.vosmenog-changelog-seen"
@@ -27,7 +34,7 @@ if [ -n "$DEPLOYED" ]; then
   SEEN="$(cat "$SEEN_FILE" 2>/dev/null || true)"
   if [ -z "$SEEN" ]; then
     # первый запуск механизма: запомнить и не вываливать всю историю
-    printf '%s\n' "$DEPLOYED" > "$SEEN_FILE"
+    [ "$PEEK" = "0" ] && printf '%s\n' "$DEPLOYED" > "$SEEN_FILE"
   elif [ "$SEEN" != "$DEPLOYED" ]; then
     if git -C "$SRC" cat-file -e "$SEEN^{commit}" 2>/dev/null; then
       echo "Метод обновился, вот что нового:"
@@ -35,7 +42,7 @@ if [ -n "$DEPLOYED" ]; then
       echo "  файлы:"
       git -C "$SRC" diff --name-only "$SEEN..$DEPLOYED" | sed 's/^/    /'
     fi
-    printf '%s\n' "$DEPLOYED" > "$SEEN_FILE"
+    [ "$PEEK" = "0" ] && printf '%s\n' "$DEPLOYED" > "$SEEN_FILE"
   fi
 fi
 
