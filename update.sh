@@ -203,6 +203,16 @@ if [ -d "$PAYLOAD/plugins" ]; then
   cp "$PAYLOAD/plugins/"*.tsx "$OC_CONF/plugins/" 2>/dev/null; ok "plugins/ (TUI-плагины)"
 fi
 
+# 2g. инструменты раскладки (EPIC-025): индекс проектов и рабочие ветки.
+#     Правила — agent-os/method/layout.md; хук старта зовёт projects-index.py --summary.
+if [ -d "$PAYLOAD/tools" ]; then
+  mkdir -p "$AGENT_OS/bin"
+  for t in "$PAYLOAD/tools/"*; do
+    cp "$t" "$AGENT_OS/bin/"; chmod +x "$AGENT_OS/bin/$(basename "$t")"
+  done
+  ok "agent-os/bin/ (projects-index.py, wt.sh — раскладка проектов)"
+fi
+
 # 2f. маркер источника: установка своего git не имеет и без этого файла
 #     не знает, откуда её раскатали. По нему протокол старта (STARTUP.md,
 #     «Уведомление об обновлении») ходит в источник за changelog и за

@@ -26,6 +26,14 @@ go() {
 # ------------------------------------------------------------
 alias vosya-update="$HOME/agent-os/update.sh"
 
+# ------------------------------------------------------------
+#  Раскладка проектов (EPIC-025, ~/agent-os/method/layout.md):
+#  wt new|done|list — рабочие ветки только в <репо>/.worktrees/
+#  projects-index   — нарушения раскладки; --write пересобирает ~/projects/INDEX.md
+# ------------------------------------------------------------
+alias wt="$HOME/agent-os/bin/wt.sh"
+alias projects-index="$HOME/agent-os/bin/projects-index.py"
+
 
 # ------------------------------------------------------------
 #  vosya-new-project <name> — развернуть team-work-болванку под новый проект.
