@@ -1,3 +1,9 @@
+<!-- passport
+key: vosmenog
+planning: team-work/vosmenog
+status: active
+about: исходник метода ЭВМ и дистрибутива Восьменога
+-->
 # AGENTS.md — Vosmenog
 
 > Фреймворк дисциплинированного агента. Это мета-проект: инструкции, метод, память.
