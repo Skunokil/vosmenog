@@ -27,7 +27,7 @@ metadata:
 обновления, мониторинг) — живут в **`~/projects/infra`** (скрипты) и
 **`team-work/infra`** (эпики). Периметр — весь сервер.
 
-Шаблоны проекта — `payload/infra-project/` в дистрибутиве. При установке
+Шаблоны проекта — `harness/infra-project/` в дистрибутиве. При установке
 агента (`setup.sh`) проект `infra` появляется автоматически с эпиками:
 EPIC-001-backup (эталон), черновики SSH/git, обновления.
 
@@ -64,7 +64,7 @@ ssh -o StrictHostKeyChecking=accept-new -T git@github.com
 
 ## Шаг 3 — бэкап restic + S3
 
-Разворачивается по шаблонам `payload/infra-project/` (или повторяет EPIC-001-backup в `team-work/infra/epics/`):
+Разворачивается по шаблонам `harness/infra-project/` (или повторяет EPIC-001-backup в `team-work/infra/epics/`):
 
 1. **`.env`** — креды S3 и пароль restic. Шаблон `.env.example` → `.env` (`chmod 600`), владелец заполняет САМ (nano). Правила: значения в кавычках (спецсимволы `& $ #` ломают `source`), `RESTIC_REPOSITORY=s3:host/bucket` (слэш, не двоеточие). Пароль restic — в менеджер паролей владельца.
 2. **Установка restic**: `sudo apt-get install -y restic`.

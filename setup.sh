@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================
 #  Vosmenog — установщик фреймворка дисциплинированного агента
-#  Раскладывает payload по местам, сливает конфиг, ставит периметр.
+#  Раскладывает дистрибутив (harness/ и vosmenog/) по местам, сливает конфиг, ставит периметр.
 #  Идемпотентен: бэкапит существующее, не клобберит чужой конфиг.
-#  Кириллицу НЕ генерирует — только перекладывает готовые файлы payload.
+#  Кириллицу НЕ генерирует — только перекладывает готовые файлы дистрибутива.
 # ============================================================
 set -euo pipefail
 
@@ -45,10 +45,11 @@ fi
 
 # --- 1. Структура папок ------------------------------------
 say "Создание структуры"
-mkdir -p "$AGENT_OS" "$MEMORY/archive" "$AGENTS" "$OC_CONF/skills"
-ok "$AGENT_OS, $MEMORY, $AGENTS"
+mkdir -p "$AGENT_OS" "$MEMORY/archive" "$OC_CONF/skills"
+[ "$HARNESS_ONLY" = "1" ] || mkdir -p "$AGENTS"
+ok "$AGENT_OS, $MEMORY"
 
-# --- 2. Раскладка payload ----------------------------------
+# --- 2. Раскладка дистрибутива ----------------------------------
 say "Раскладка файлов фреймворка"
 DOCS="METHOD.md BOOT.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
 [ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
@@ -199,6 +200,10 @@ fi
 #     есть — не трогаем. Подключает в opencode и (если стоит) в Claude Code.
 say "Карта сервера (слот SERVER.md)"
 python3 "$HARNESS/connect-server-map.py"
+
+# --- 3b. Адаптер Claude Code (хуки порога смены и панель; только добавление) ---
+say "Адаптер Claude Code"
+python3 "$HARNESS/adapters/claude-code/install.py"
 
 # --- 4. Периметр (барьер прав Vosmenog) --------------------
 if [ "$HARNESS_ONLY" != "1" ]; then

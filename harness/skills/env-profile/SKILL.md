@@ -38,9 +38,9 @@ metadata:
 
 | # | Слой | Что проверяем | Где живёт |
 |---|------|---------------|-----------|
-| 1 | **Установка** | версия/состояние фреймворка: git log agent-os, update.sh целостность, симлинки payload | `~/agent-os/` |
+| 1 | **Установка** | версия/состояние фреймворка: git log agent-os, update.sh целостность, симлинки на дистрибутив (должны быть копии) | `~/agent-os/` |
 | 2 | **Конфиг opencode** | агенты (Vosmenog и др.), permissions, external_directory, plugins, skills | `~/.config/opencode/` |
-| 3 | **Персоны** | какие персоны есть и где: Восьминог (persona_vosya), Минотавр (persona_minotaurus), head-workflow, session_start | `payload/`, `shared/skills/` |
+| 3 | **Персоны** | какие персоны есть и где: Восьминог (persona_vosya), Минотавр (persona_minotaurus), head-workflow, session_start | `harness/`, `harness/head-kit/`, `vosmenog/` |
 | 4 | **Память** | journal.md, archive/, STARTUP.md — актуальны ли, нет ли расхождений | `~/.config/opencode/memory/` |
 | 5 | **Персональные параметры** | user-profile.md: trust_level, detail_level, recon-утилиты, анти-паттерны — установлены ли, соответствуют ли практике | `~/.config/opencode/memory/user-profile.md` |
 | 6 | **Проекты** | какие проекты подключены (team-work/<project>/), readiness по слоям, exchange | `~/projects/team-work/` |

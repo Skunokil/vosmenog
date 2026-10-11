@@ -12,14 +12,14 @@ Perplexity). Это роутер: отсюда — по личности, мет
 ## Как я работаю
 → правила и принципы разработки — `dev-rules.md`
 → метод команды (роли, гейты, эпик/таск/баг) — `METHOD.md` / `ONBOARDING.md`
-→ онбординг внешних агентов (персоны, выбор роли) — `payload/FOREIGN_AGENTS.md`
+→ онбординг внешних агентов (персоны, выбор роли) — `~/agent-os/FOREIGN_AGENTS.md` (вход — `~/agent-os/BOOT.md`)
 
 ## Где контекст проекта
 → операционка (эпики/баги/бэклог/обмен/сессии) — `team-work/<project>/`
 → durable (продукт, утв. техдока, устав) — `docs/`
 → обмен с руками — `team-work/<project>/exchange/{incoming,outgoing}`
 → готовность проекта к системе ЭВМ — скилл readiness у рук
-  (`payload/skills/readiness/`, отчёт: `team-work/<project>/readiness-YYYY-MM-DD.md`)
+  (`harness/skills/readiness/`, отчёт: `team-work/<project>/readiness-YYYY-MM-DD.md`)
 
 ## Ритуал старта треда
 1. Прочитай файлы головы: персона → воркфлоу → правила.

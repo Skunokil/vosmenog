@@ -4,7 +4,7 @@
 Зовут setup.sh и update.sh. Только ДОБАВЛЯЕТ: ничего не убирает и не
 переписывает. Перед правкой чужого конфига кладёт бэкап рядом.
 
-  1. ~/projects/team-work/SERVER.md  — нет файла: заготовка из payload;
+  1. ~/projects/team-work/SERVER.md  — нет файла: заготовка из harness/;
                                         есть: не трогаем ни байта.
   2. ~/.config/opencode/opencode.json — в instructions[] добавить карту.
   3. ~/.claude/CLAUDE.md              — дописать импорт @...SERVER.md.
@@ -50,7 +50,7 @@ def slot_file():
         same("карта сервера уже есть — не трогаю: " + MAP_REF)
         return
     if not os.path.exists(TEMPLATE):
-        warn("нет заготовки payload/server.template.md — карту не создаю")
+        warn("нет заготовки harness/server.template.md — карту не создаю")
         return
     os.makedirs(os.path.dirname(MAP), exist_ok=True)
     shutil.copy2(TEMPLATE, MAP)

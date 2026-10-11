@@ -19,7 +19,7 @@
 1. Скажи Claude Code:
    `прочитай ~/agent-os/CLAUDE_CODE_MINOTAUR.md и выполни самонастройку`
    (путь после раскатки — `~/agent-os/CLAUDE_CODE_MINOTAUR.md`; до неё —
-   `~/projects/vosmenog/payload/CLAUDE_CODE_MINOTAUR.md`).
+   `~/projects/vosmenog/harness/CLAUDE_CODE_MINOTAUR.md`).
 2. Claude Code выполнит шаги сам: проверит файлы → создаст `~/.claude/CLAUDE.md`
    с роутером → проверит обмен и доверие → доложит.
 3. Проверка результата: `cat ~/.claude/CLAUDE.md` — роутер на месте; новый старт

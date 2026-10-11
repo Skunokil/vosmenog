@@ -39,24 +39,29 @@ git branch     # main (единственная ветка, проект мет�
 
 ```
 vosmenog/
-  METHOD.md           # Ядро метода (контракт исполнителя)
-  AGENTS.md           # Этот файл — проектные слоты
-  EPIC.template.md    # Шаблон эпика
-  TASK.template.md    # Шаблон задачи
-  BUG.template.md     # Шаблон бага
-  GUIDE.md            # Руководство по установке
-  setup.sh            # Скрипт установки
-  update.sh           # Скрипт обновления
-  persona_vosya.md    # Персона агента-исполнителя
-  payload/            # Установочные файлы
-    skills/           #   Скиллы (tutor, infra-bootstrap, ...) → ~/.config/opencode/skills
-    infra-project/    #   Эталон инфраструктурного проекта (бэкап restic+S3, шаблоны)
-    shared/skills/    #   Кит головы (персона Минотавра, head-workflow, session_start)
+  AGENTS.md           # Этот файл — паспорт и проектные слоты
+  README.md GUIDE.md INSTALL_PROMPT.md   # Вход ученика и руководство по установке
+  setup.sh update.sh  # Установщики (флаг --harness-only — только харнесс)
+  harness/            # ХАРНЕСС: метод и всё, что делает агента участником метода
+    METHOD.md BOOT.md STARTUP.md *.template.md  # ядро, единый вход, память смены, шаблоны
+    method/ tools/    #   разделы метода; evm, projects-index, wt
+    head-kit/         #   кит головы (персона Минотавра, head-workflow, session_start, dev-rules)
+    skills/           #   методические скиллы (readiness, env-profile, server-audit, oom-guard, infra-bootstrap)
+    infra-project/    #   эталон инфраструктурного проекта (бэкап restic+S3, шаблоны)
+    adapters/claude-code/  # хуки порога смены, панель, подключение в settings.json
+  vosmenog/           # ВОСЬМЕНОГ: персона и продукт для opencode
+    persona_vosya.md agents/ opencode.json tui.json plugins/ global-AGENTS.md
+    skills/           #   курсовые скиллы (tutor, help, course-project)
 ```
+
+**Граница слоёв (EPIC-026 Ф4):** `harness/` не знает про `vosmenog/` — ни файлов, ни путей
+(проверка: `./check-boundary.sh` из корня репо). `vosmenog/` пользуется харнессом через установленные
+пути `~/agent-os`. Установка на диске от разбиения не зависит: `~/agent-os`, `~/.config/opencode`,
+`~/.local/bin` выглядят одинаково.
 
 > **Инфраструктурный проект:** работы вне продуктовых проектов (бэкап, ssh, git,
 > обновления) живут в `~/projects/infra` + `team-work/infra/`. Развёртывание —
-> скилл `infra-bootstrap` (см. `payload/skills/`), статус при старте — проверка
+> скилл `infra-bootstrap` (см. `harness/skills/`), статус при старте — проверка
 > в STARTUP.md. Подробно: `METHOD.md` → раздел «Инфраструктурный проект (infra)».
 
 ---
@@ -98,14 +103,14 @@ vosmenog/
 
 ## Как улучшать агента
 
-- Улучшение агента = правка **дистрибутива** (`payload/` в этом репозитории).
+- Улучшение агента = правка **дистрибутива** (`harness/` или `vosmenog/` в этом репозитории).
   Живые файлы на сервере (`~/agent-os/`, `~/.config/opencode/`) — результат
   раскатки, правятся через дистрибутив.
 - **Три уровня:** GitHub-репо (источник) → `~/agent-os` (клон репо, дистрибутив
   на сервере) → `~/.config/opencode/` (живой конфиг, откуда работает агент).
-- **Порядок изменений:** (1) правка в `payload/` клона репо → (2) коммит + push
+- **Порядок изменений:** (1) правка в `harness/` или `vosmenog/` клона репо → (2) коммит + push
   в GitHub → (3) накатка: в `~/agent-os` `git pull`, затем `vosya-update`
-  (раскладывает payload в живой конфиг).
+  (раскладывает дистрибутив в живой конфиг).
 - Править файлы прямо в `~/agent-os` в обход git можно, но правки потеряются
   при следующем pull.
 - Навыки/скиллы — улучшаются по итогам ретро в процессе работы, обычным циклом.
