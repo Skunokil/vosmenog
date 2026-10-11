@@ -108,8 +108,9 @@ def infer_project(cwd=None):
 
 def persona_line(role):
     if role == "solo":
-        return ("solo - один агент, все режимы (думаю / делаю / проверяю), см. "
-                f"{HOME}/agent-os/method/modes.md; персона не нужна. Роль: --role head|hands|text")
+        return ("solo - один агент, режимы думаю / делаю / проверяю. Переход между режимами фиксируется "
+                "документом (EPIC/TASK), развилка уходит владельцу, документирует тот, кто работал; "
+                f"в журнале подпись своей персоны. Подробно: {HOME}/agent-os/method/modes.md. Роль: --role head|hands|text")
     for cand in PERSONA[role]:
         if cand.is_file():
             return f"{role} - прочитай {mark(cand)}"
