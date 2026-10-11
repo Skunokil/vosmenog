@@ -22,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CC = os.path.join(os.path.expanduser("~"), ".claude")
 FILES = [  # (источник, приёмник, исполняемый)
     ("hooks/session-start.sh", "hooks/session-start.sh", True),
+    ("hooks/stop-guard.sh", "hooks/stop-guard.sh", True),
     ("hooks/orchestrator.sh", "hooks/orchestrator.sh", True),
     ("statusline.sh", "statusline.sh", True),
     ("statusline-tokens.py", "statusline-tokens.py", False),
@@ -45,6 +46,20 @@ def same_bytes(a, b):
         return x.read() == y.read()
 
 
+# Прежние версии файлов дистрибутива (sha256). Установленный файл с таким хешем - не правка
+# владельца, а старая раскатка: его можно обновить (с бэкапом). Любой другой хеш не трогаем.
+KNOWN_OLD = {
+    # session-start.sh до Ф5: полный порог смены прямо в хуке (коммит 064c100)
+    "hooks/session-start.sh": ["17b28a5a1d414dfcb786"],
+}
+
+
+def sha_prefix(path):
+    import hashlib
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def files():
     for src, dst, exe in FILES:
         s, d = os.path.join(HERE, src), os.path.join(CC, dst)
@@ -56,6 +71,13 @@ def files():
             ok("Claude Code: ~/.claude/%s положен" % dst)
         elif same_bytes(s, d):
             same("Claude Code: ~/.claude/%s уже на месте" % dst)
+        elif any(sha_prefix(d).startswith(h) for h in KNOWN_OLD.get(dst, [])):
+            bak = "%s.bak-%s" % (d, datetime.datetime.now().strftime("%Y-%m-%d-%H%M%S"))
+            shutil.copy2(d, bak)
+            shutil.copy2(s, d)
+            if exe:
+                os.chmod(d, 0o755)
+            ok("Claude Code: ~/.claude/%s обновлён с прежней версии дистрибутива (бэкап: %s)" % (dst, os.path.basename(bak)))
         else:
             warn("Claude Code: ~/.claude/%s отличается от дистрибутива - НЕ трогаю" % dst)
             print("        diff %s %s" % (d, s))
@@ -85,6 +107,10 @@ def settings():
     if not has_cmd(ss, "session-start.sh"):
         ss.extend(frag["hooks"]["SessionStart"])
         changed.append("SessionStart (порог смены)")
+    st = hooks.setdefault("Stop", [])
+    if not has_cmd(st, "stop-guard.sh"):
+        st.extend(frag["hooks"]["Stop"])
+        changed.append("Stop (сторож конца смены)")
     if "statusLine" not in conf:
         conf["statusLine"] = frag["statusLine"]
         changed.append("statusLine (панель)")

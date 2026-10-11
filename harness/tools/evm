@@ -1,27 +1,41 @@
 #!/usr/bin/env python3
 """evm - единая команда метода ЭВМ (EPIC-026 vosmenog).
 
-  evm boot <проект> [--role solo|head|hands|text]
-      Печатает, что читать и в каком порядке (платформа -> карта сервера ->
-      роль -> проект -> смена) и что сейчас горит (входящее, соседи, дерево).
-      Только читает, ничего не пишет и не запускает кроме хука порога смены.
+  evm boot [проект] [--role solo|head|hands|text] [--brief]
+      Что читать и в каком порядке (платформа -> карта сервера -> роль -> проект ->
+      смена) и что сейчас горит (прошлая смена, входящее, соседи, дерево).
+      Проект не назван: берётся $VOSMENOG_PROJECT, иначе по текущему каталогу.
+      Роль не названа: $EVM_ROLE, иначе solo. --brief - краткая форма (возобновление).
+  evm threshold
+      Порог смены: соседние сессии, оркестратор, дерево, раскладка.
+  evm close [проект]
+      Чек-лист закрытия смены. Только читает. Код возврата 1, если есть красное.
+  evm guard stop
+      Сторож конца смены для хука Stop Claude Code (читает JSON со stdin).
 
 Любому агенту с доступом к шеллу достаточно фразы:
-  «Прочитай ~/agent-os/BOOT.md и работай по методу в проекте <ключ>».
+  «Прочитай /home/<пользователь>/agent-os/BOOT.md и работай по методу в проекте <ключ>».
 """
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOME = Path(os.path.expanduser("~"))
 HERE = Path(os.path.realpath(__file__)).parent
 INDEXER = HERE / "projects-index.py"
-HOOK = HOME / ".claude/hooks/session-start.sh"
+THRESHOLD = HERE / "evm-threshold"
 TEAM = HOME / "projects/team-work"
+STATE = HOME / ".local/state/evm"
 BUDGET = 3000
+BRIEF_BUDGET = 1500
+STALE_MIN = int(os.environ.get("EVM_STALE_MIN", "30"))
+MEM_MAX = 4000
+JOURNAL_LINE_MAX = 200
 
 ROLES = ("solo", "head", "hands", "text")
 PERSONA = {
@@ -30,6 +44,8 @@ PERSONA = {
     "text": (HOME / ".claude/agents/zina.md",),
 }
 
+
+# ---------- общие помощники ----------
 
 def tilde(p):
     """Путь для вывода. Абсолютный, а не «~/...»: чужие агенты (проверено на Kimi,
@@ -49,6 +65,11 @@ def mark(p):
     return f"{tilde(p)} ({n} зн.)" if n is not None else f"{tilde(p)} - НЕТ"
 
 
+def git(repo, *args):
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else ""
+
+
 def resolve(key):
     """-> (код проекта | None, каталог планирования | None, ошибка | None)."""
     if INDEXER.is_file():
@@ -59,98 +80,341 @@ def resolve(key):
             return Path(code), (Path(plan) if plan else None), None
         if r.returncode == 3:
             return None, None, r.stderr.strip()
-    # проект без кода (например home): только планирование
-    if (TEAM / key).is_dir():
+    if (TEAM / key).is_dir():       # проект без кода (например home): только планирование
         return None, TEAM / key, None
-    return None, None, f"нет проекта «{key}». Реестр: ~/projects/INDEX.md"
+    return None, None, f"нет проекта «{key}». Реестр: {HOME}/projects/INDEX.md"
+
+
+def infer_project(cwd=None):
+    """Ключ проекта без аргумента: $VOSMENOG_PROJECT, затем каталог планирования
+    team-work/<имя>/, затем реестр по каталогу кода. None - не удалось."""
+    env = os.environ.get("VOSMENOG_PROJECT", "").strip()
+    if env:
+        return env
+    cwd = Path(cwd or os.getcwd()).resolve()
+    try:
+        rel = cwd.relative_to(TEAM)
+        if rel.parts:
+            return rel.parts[0]
+    except ValueError:
+        pass
+    if INDEXER.is_file():
+        r = subprocess.run([sys.executable, str(INDEXER), "--which", str(cwd)],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    return None
 
 
 def persona_line(role):
     if role == "solo":
-        return ("solo - один агент, все режимы (думаю / делаю / проверяю); персона не нужна. "
-                "Роль можно сменить: --role head|hands|text")
+        return ("solo - один агент, все режимы (думаю / делаю / проверяю), см. "
+                f"{HOME}/agent-os/method/modes.md; персона не нужна. Роль: --role head|hands|text")
     for cand in PERSONA[role]:
         if cand.is_file():
             return f"{role} - прочитай {mark(cand)}"
     return f"{role} - файл персоны не найден (искал: " + ", ".join(tilde(c) for c in PERSONA[role]) + ")"
 
 
-def threshold(cwd):
-    """Порог смены: хук Claude Code, если он есть (решение Р8 EPIC-026)."""
-    if HOOK.is_file():
+# ---------- прошлая смена ----------
+
+def newest_dirty_mtime(repo, subpath=None):
+    """Самая свежая правка среди незакоммиченных (без неотслеживаемого мусора)."""
+    args = ["status", "--porcelain"] + (["--", subpath] if subpath else [])
+    out = git(repo, *args)
+    newest, count = 0.0, 0
+    for ln in out.splitlines():
+        if ln.startswith("??"):
+            continue
+        count += 1
+        f = Path(repo) / ln[3:].split(" -> ")[-1].strip('"')
         try:
-            r = subprocess.run(["bash", str(HOOK)], cwd=str(cwd) if cwd else None,
-                               capture_output=True, text=True, timeout=15)
-        except (subprocess.TimeoutExpired, OSError):
-            return ["порог смены не ответил за 15 с"]
-        lines = [ln.rstrip() for ln in r.stdout.splitlines() if ln.strip() and not ln.startswith("──")]
-        # часы нужны владельцу, а не загрузке агента: они вторые в хуке, но короткие - оставляем
-        return lines
-    out = ["порога смены нет на этой машине (~/.claude/hooks/session-start.sh): соседние сессии не видны"]
-    if cwd and (cwd / ".git").exists():
-        st = subprocess.run(["git", "-C", str(cwd), "status", "--porcelain"], capture_output=True, text=True)
-        dirty = [ln for ln in st.stdout.splitlines() if not ln.startswith("??")]
-        br = subprocess.run(["git", "-C", str(cwd), "branch", "--show-current"], capture_output=True, text=True)
-        out.append(f"ветка: {br.stdout.strip() or '?'} · незакоммиченных: {len(dirty)}")
-    return out
+            newest = max(newest, f.stat().st_mtime)
+        except OSError:
+            pass
+    return newest, count
 
 
-def boot(key, role):
+def work_state(code, plan):
+    """Что изменилось в проекте. Возвращает dict: mem_path, mem_ts, last_work_ts,
+    commits_code, commits_plan (после памяти), dirty."""
+    mem = (plan / "sessions/next-session.md") if plan else None
+    mem_ts = mem.stat().st_mtime if mem and mem.is_file() else 0.0
+    last = 0.0
+    commits_code = commits_plan = dirty = 0
+    if code and (code / ".git").exists():
+        t = git(code, "log", "-1", "--format=%ct").strip()
+        if t:
+            last = max(last, float(t))
+        commits_code = len(git(code, "log", f"--since=@{int(mem_ts)}", "--format=%h").split()) if mem_ts else 0
+        nt, n = newest_dirty_mtime(code)
+        last, dirty = max(last, nt), dirty + n
+    if plan and TEAM.exists() and (TEAM / ".git").exists():
+        try:
+            rel = str(plan.relative_to(TEAM))
+        except ValueError:
+            rel = None
+        if rel:
+            t = git(TEAM, "log", "-1", "--format=%ct", "--", rel, f":(exclude){rel}/sessions").strip()
+            if t:
+                last = max(last, float(t))
+            if mem_ts:
+                commits_plan = len(git(TEAM, "log", f"--since=@{int(mem_ts)}", "--format=%h", "--",
+                                       rel, f":(exclude){rel}/sessions").split())
+            # правки самой памяти и журнала работой не считаем
+            out = git(TEAM, "status", "--porcelain", "--", rel, f":(exclude){rel}/sessions")
+            n = len([ln for ln in out.splitlines() if not ln.startswith("??")])
+            nt = 0.0
+            for ln in out.splitlines():
+                if ln.startswith("??"):
+                    continue
+                try:
+                    nt = max(nt, (TEAM / ln[3:].strip('"')).stat().st_mtime)
+                except OSError:
+                    pass
+            last, dirty = max(last, nt), dirty + n
+    return {"mem": mem, "mem_ts": mem_ts, "last": last,
+            "commits_code": commits_code, "commits_plan": commits_plan, "dirty": dirty}
+
+
+def ago(sec):
+    m = int(sec // 60)
+    if m < 90:
+        return f"{m} мин"
+    h = m / 60
+    return f"{h:.0f} ч" if h < 48 else f"{h / 24:.0f} дн"
+
+
+def last_shift_line(code, plan):
+    if not plan:
+        return None
+    w = work_state(code, plan)
+    if not w["mem_ts"]:
+        return "прошлая смена: горячей памяти нет (sessions/next-session.md) - заведи из шаблона"
+    age = time.time() - w["mem_ts"]
+    txt = w["mem"].read_text(encoding="utf-8", errors="replace")
+    head = "есть" if re.search(r"HEAD самодостаточен|в дереве починка", txt) else "НЕТ"
+    extra = ""
+    if w["commits_code"] or w["commits_plan"] or w["dirty"]:
+        extra = (f"; после неё коммитов {w['commits_code']} (код) + {w['commits_plan']} (планирование), "
+                 f"незакоммиченных {w['dirty']}")
+    return f"прошлая смена: память обновлена {ago(age)} назад{extra}; строка «HEAD самодостаточен»: {head}"
+
+
+# ---------- threshold ----------
+
+def threshold_lines(cwd, limit=None):
+    if not THRESHOLD.is_file():
+        return ["порог смены недоступен: нет evm-threshold рядом с evm (повтори update.sh)"]
+    try:
+        r = subprocess.run(["bash", str(THRESHOLD)], cwd=str(cwd) if cwd else None,
+                           capture_output=True, text=True, timeout=15)
+    except (subprocess.TimeoutExpired, OSError):
+        return ["порог смены не ответил за 15 с"]
+    lines = [ln.rstrip() for ln in r.stdout.splitlines() if ln.strip() and not ln.startswith("──")]
+    return lines[:limit] if limit else lines
+
+
+# ---------- boot ----------
+
+def boot(key, role, brief):
+    if not key:
+        key = infer_project()
+    if not key:
+        print("evm: проект не назван и не определился ($VOSMENOG_PROJECT пуст, каталог не в реестре). "
+              "Укажи: evm boot <ключ>", file=sys.stderr)
+        return 1
     code, plan, err = resolve(key)
     if err:
         print(f"evm: {err}", file=sys.stderr)
         return 1
-    shown = (plan.name if plan else (code.name if code else key))
-    L = [f"== evm boot: {shown} · роль: {role} =="]
-    L.append("Читай по порядку (в скобках размер):")
-    L.append(f" 1 платформа  {mark(HOME / 'agent-os/METHOD.md')} - стопы, эпик-цикл; по необходимости")
-    L.append(f" 2 сервер     {mark(TEAM / 'SERVER.md')} - правила этой машины, читать")
-    L.append(f" 3 роль       {persona_line(role)}")
-    if code:
-        proj_md = next((code / n for n in ("AGENTS.md", "CLAUDE.md") if (code / n).is_file()), code / "AGENTS.md")
-        L.append(f" 4 проект     {mark(proj_md)} - карта, гейты, ветки")
-    else:
-        L.append(" 4 проект     кода нет, только планирование")
-    if plan:
-        ns = plan / "sessions/next-session.md"
-        L.append(f" 5 смена      {mark(ns)} - целиком")
-        txt = ns.read_text(encoding="utf-8", errors="replace") if ns.is_file() else ""
-        m = re.search(r"EPIC-(\d+)", txt)       # первый упомянутый эпик - первое дело
+    shown = plan.name if plan else (code.name if code else key)
+    L = [f"== evm boot: {shown} · роль: {role}{' · кратко' if brief else ''} =="]
+    ns = (plan / "sessions/next-session.md") if plan else None
+    epic_line = None
+    if plan and ns and ns.is_file():
+        m = re.search(r"EPIC-(\d+)", ns.read_text(encoding="utf-8", errors="replace"))
         hit = sorted((plan / "epics").glob(f"EPIC-{m.group(1)}*.md")) if m else []
         if hit:
-            L.append(f"              эпик из горячей памяти: {mark(hit[0])}")
-        j = plan / "sessions/journal.md"
-        L.append(f"              журнал {tilde(j)} и archive/ - только грепом, не целиком")
+            epic_line = f"              эпик из горячей памяти: {mark(hit[0])}"
+    if brief:
+        L.append("Контекст уже был; читай заново только смену:")
+    else:
+        L.append("Читай по порядку (в скобках размер):")
+        L.append(f" 1 платформа  {mark(HOME / 'agent-os/METHOD.md')} - стопы, эпик-цикл; по необходимости")
+        L.append(f" 2 сервер     {mark(TEAM / 'SERVER.md')} - правила этой машины, читать")
+        L.append(f" 3 роль       {persona_line(role)}")
+        if code:
+            proj_md = next((code / n for n in ("AGENTS.md", "CLAUDE.md") if (code / n).is_file()), code / "AGENTS.md")
+            L.append(f" 4 проект     {mark(proj_md)} - карта, гейты, ветки")
+        else:
+            L.append(" 4 проект     кода нет, только планирование")
+    if plan:
+        L.append(f" 5 смена      {mark(plan / 'sessions/next-session.md')} - целиком")
+        if epic_line:
+            L.append(epic_line)
+        L.append(f"              журнал {tilde(plan / 'sessions/journal.md')} и archive/ - только грепом, не целиком")
     else:
         L.append(" 5 смена      нет каталога планирования в team-work")
     L.append("Живое:")
+    ls = last_shift_line(code, plan)
+    if ls:
+        L.append(" " + ls)
     if plan:
         inc = plan / "exchange/incoming"
         files = sorted((f for f in inc.glob("*") if f.is_file()), key=lambda f: f.stat().st_mtime, reverse=True) if inc.is_dir() else []
         L.append(f" входящее: {len(files)} в {tilde(inc)}" + (" - свежие: " + ", ".join(f.name for f in files[:3]) if files else ""))
-    for ln in threshold(code):
+    for ln in threshold_lines(code, limit=9 if brief else None):
         L.append(" " + ln.strip())
-    L.append("Конец смены: ~/.config/opencode/memory/STARTUP.md, «Завершение сессии» (перезапись next-session, строка журнала).")
+    L.append("Конец смены: `evm close` (чек-лист) и STARTUP.md, «Завершение сессии».")
     text = "\n".join(L)
     print(text)
-    if len(text) > BUDGET:
-        print(f"\n(! вывод {len(text)} зн. при бюджете {BUDGET})", file=sys.stderr)
+    cap = BRIEF_BUDGET if brief else BUDGET
+    if len(text) > cap:
+        print(f"\n(! вывод {len(text)} зн. при бюджете {cap})", file=sys.stderr)
     return 0
 
+
+# ---------- close ----------
+
+def close(key):
+    key = key or infer_project()
+    if not key:
+        print("evm: проект не определился. Укажи: evm close <ключ>", file=sys.stderr)
+        return 1
+    code, plan, err = resolve(key)
+    if err or not plan:
+        print(f"evm: {err or 'нет каталога планирования'}", file=sys.stderr)
+        return 1
+    w = work_state(code, plan)
+    bad = 0
+    out = [f"== evm close: {plan.name} =="]
+
+    def row(ok, text, warn=False):
+        nonlocal bad
+        out.append(f" {'✓' if ok else ('!' if warn else '✗')} {text}")
+        if not ok and not warn:
+            bad += 1
+
+    mem = w["mem"]
+    if not w["mem_ts"]:
+        row(False, f"горячая память: файла нет ({tilde(mem)})")
+    else:
+        lag = w["last"] - w["mem_ts"]
+        row(lag <= 60, "горячая память обновлена после последней работы" if lag <= 60
+            else f"горячая память старше последней работы на {ago(lag)}: перезапиши {tilde(mem)}")
+        n = size(mem)
+        row(n <= MEM_MAX, f"горячая память {n} зн. (потолок {MEM_MAX})")
+        txt = mem.read_text(encoding="utf-8", errors="replace")
+        row(bool(re.search(r"HEAD самодостаточен|в дереве починка", txt)),
+            "в памяти есть строка «HEAD самодостаточен» / «в дереве починка»")
+    jr = plan / "sessions/journal.md"
+    if jr.is_file():
+        today = {time.strftime("%Y-%m-%d"), time.strftime("%Y-%m-%d", time.gmtime())}
+        lines = [ln for ln in jr.read_text(encoding="utf-8", errors="replace").splitlines()
+                 if any(ln.startswith(d) for d in today)]
+        signed = [ln for ln in lines if re.search(r"\[[^\]]+\]", ln)]
+        if not lines:
+            row(False, "в журнале нет сегодняшней строки")
+        elif not signed:
+            row(False, "сегодняшняя строка журнала без подписи персоны ([мин] / [вос] / [зин])")
+        else:
+            long_ = [ln for ln in signed if len(ln) > JOURNAL_LINE_MAX]
+            row(not long_, "строка журнала подписана, ≤200 знаков" if not long_
+                else f"строка журнала длиннее {JOURNAL_LINE_MAX} знаков ({len(long_[-1])})")
+    else:
+        row(False, f"журнала нет: {tilde(jr)}")
+    if w["dirty"]:
+        row(False, f"незакоммиченных правок в проекте и планировании: {w['dirty']} - свои закоммить, чужие не трогай", warn=True)
+    else:
+        row(True, "незакоммиченных правок нет")
+    if code and (code / ".git").exists():
+        wt = [ln for ln in git(code, "worktree", "list", "--porcelain").splitlines() if ln.startswith("worktree ")]
+        stray = [ln[9:] for ln in wt[1:] if "/.worktrees/" not in ln]
+        row(not stray, "рабочие ветки сняты или лежат в .worktrees/" if not stray
+            else "worktree не на месте: " + ", ".join(stray), warn=True)
+    out.append(" ? лист приёмки эпика закрыт - проверь вручную: каждая находка помечена (исправлено / backlog / отложено)")
+    print("\n".join(out))
+    return 1 if bad else 0
+
+
+# ---------- сторож Stop ----------
+
+def guard_stop():
+    """Хук Stop: один раз за сессию напомнить, что горячая память устарела.
+    Не блокирует: сообщение уходит модели (additionalContext) и владельцу (systemMessage)."""
+    try:
+        data = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return 0
+    if data.get("stop_hook_active") or data.get("agent_id"):
+        return 0            # защита от петли и субагенты
+    sid = str(data.get("session_id", "") or "")
+    if not sid:
+        return 0
+    key = infer_project(data.get("cwd"))
+    if not key:
+        return 0
+    code, plan, err = resolve(key)
+    if err or not plan:
+        return 0
+    STATE.mkdir(parents=True, exist_ok=True)
+    warned = STATE / f"stop-warned-{sid}"
+    if warned.exists():
+        return 0
+    start_f = STATE / f"start-{sid}"
+    try:
+        start = start_f.stat().st_mtime
+    except OSError:
+        try:
+            start = Path(data.get("transcript_path", "")).stat().st_ctime
+        except OSError:
+            return 0
+    w = work_state(code, plan)
+    if not w["mem_ts"] or w["last"] <= start:
+        return 0            # за сессию ничего не менялось
+    lag = w["last"] - w["mem_ts"]
+    if lag <= STALE_MIN * 60:
+        return 0
+    warned.write_text(str(int(time.time())))
+    msg = (f"Горячая память смены устарела: {tilde(w['mem'])} старше последней работы на {ago(lag)} "
+           f"(коммитов после неё: {w['commits_code']} + {w['commits_plan']}, незакоммиченных: {w['dirty']}). "
+           "Обнови next-session.md (первое дело следующей смены) и добавь строку в журнал, затем проверь `evm close`. "
+           "Это одно напоминание за сессию; завершить работу оно не запрещает.")
+    print(json.dumps({
+        "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": msg},
+        "systemMessage": f"evm: горячая память смены старше работы на {ago(lag)} - агента попросили обновить её",
+    }, ensure_ascii=False))
+    return 0
+
+
+# ---------- main ----------
 
 def main():
     ap = argparse.ArgumentParser(prog="evm", description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
     b = sub.add_parser("boot", help="что читать и что сейчас горит")
-    b.add_argument("project")
-    b.add_argument("--role", choices=ROLES, default="solo")
+    b.add_argument("project", nargs="?")
+    b.add_argument("--role", choices=ROLES, default=os.environ.get("EVM_ROLE") if os.environ.get("EVM_ROLE") in ROLES else "solo")
+    b.add_argument("--brief", action="store_true")
+    sub.add_parser("threshold", help="порог смены")
+    c = sub.add_parser("close", help="чек-лист закрытия смены")
+    c.add_argument("project", nargs="?")
+    g = sub.add_parser("guard", help="сторожа для хуков")
+    g.add_argument("what", choices=["stop"])
     a = ap.parse_args()
     if a.cmd == "boot":
-        return boot(a.project, a.role)
+        return boot(a.project, a.role, a.brief)
+    if a.cmd == "threshold":
+        print("\n".join(threshold_lines(None)))
+        return 0
+    if a.cmd == "close":
+        return close(a.project)
+    if a.cmd == "guard":
+        return guard_stop()
     ap.print_help()
-    print("\nПодкоманды threshold и close - в планах (EPIC-026 Ф5).")
-    return 0 if a.cmd is None else 2
+    return 0
 
 
 if __name__ == "__main__":

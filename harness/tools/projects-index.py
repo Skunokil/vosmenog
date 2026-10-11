@@ -314,6 +314,8 @@ def main():
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--which", metavar="ПУТЬ",
+                    help="напечатать ключ проекта, в чьём каталоге лежит ПУТЬ (самый глубокий); код 1 - ни в каком")
     ap.add_argument("--resolve", metavar="КЛЮЧ",
                     help="напечатать путь<TAB>планирование проекта по ключу; код 1 — нет, 3 — неоднозначно")
     a = ap.parse_args()
@@ -323,6 +325,17 @@ def main():
         return 2
     au = Audit(root)
     au.scan()
+    if a.which:
+        target = Path(a.which).expanduser().resolve()
+        best = None
+        for p in au.projects:
+            if p["passport"] and p["passport"].get("key") and is_inside(target, p["path"]):
+                if best is None or len(str(p["path"])) > len(str(best["path"])):
+                    best = p
+        if best is None:
+            return 1
+        print(best["passport"]["key"])
+        return 0
     if a.resolve:
         p, many = resolve(au, a.resolve)
         if p is None:
