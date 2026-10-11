@@ -76,7 +76,7 @@ mkdir -p "$AGENT_OS" "$MEMORY"
 # не копируем». Она была верна, пока установка была git-клоном. После снятия
 # .git (2026-09-09) симлинк стал указывать на замороженный payload, и файл
 # переставал обновляться молча. Установка копий не боится: она никуда не пушится.
-for f in METHOD.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md \
+for f in METHOD.md BOOT.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md \
          FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md \
          EPIC.template.md TASK.template.md BUG.template.md \
          project-slots.template.md ROADMAP.template.md; do
@@ -211,7 +211,19 @@ if [ -d "$PAYLOAD/tools" ]; then
   for t in "$PAYLOAD/tools/"*; do
     cp "$t" "$AGENT_OS/bin/"; chmod +x "$AGENT_OS/bin/$(basename "$t")"
   done
-  ok "agent-os/bin/ (projects-index.py, wt.sh — раскладка проектов)"
+  ok "agent-os/bin/ (projects-index.py, wt.sh, evm — раскладка и единый вход)"
+fi
+# 2g-bis. команда evm в PATH: симлинк на УСТАНОВЛЕННУЮ копию (не на payload/ —
+#         урок заморозки симлинков 2026-09-09). Чужой файл с таким именем не трогаем.
+EVM_LINK="$HOME/.local/bin/evm"
+if [ -x "$AGENT_OS/bin/evm" ]; then
+  mkdir -p "$HOME/.local/bin"
+  if [ -L "$EVM_LINK" ] || [ ! -e "$EVM_LINK" ]; then
+    ln -sfn "$AGENT_OS/bin/evm" "$EVM_LINK"; ok "~/.local/bin/evm → agent-os/bin/evm"
+  else
+    warn "~/.local/bin/evm — чужой файл, не трогаю"
+  fi
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "~/.local/bin нет в PATH — добавь, иначе evm не найдётся" ;; esac
 fi
 
 # 2h. карта сервера (EPIC-026, решение Р7): только ДОБАВЛЯЕМ строку в opencode.json

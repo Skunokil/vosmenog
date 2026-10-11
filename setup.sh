@@ -38,7 +38,7 @@ ok "$AGENT_OS, $MEMORY, $AGENTS"
 
 # --- 2. Раскладка payload ----------------------------------
 say "Раскладка файлов фреймворка"
-for f in METHOD.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
+for f in METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
          project-slots.template.md ROADMAP.template.md; do
   if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
 done
@@ -54,6 +54,22 @@ if [ -f "$PAYLOAD/$PERSONA_FILE" ]; then
 fi
 
 cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
+
+# Единый вход (EPIC-026 Ф3): команда evm и её помощник projects-index.py.
+if [ -d "$PAYLOAD/tools" ]; then
+  mkdir -p "$AGENT_OS/bin" "$HOME/.local/bin"
+  for t in "$PAYLOAD/tools/"*; do
+    cp "$t" "$AGENT_OS/bin/"; chmod +x "$AGENT_OS/bin/$(basename "$t")"
+  done
+  ok "agent-os/bin/ (evm, projects-index.py, wt.sh)"
+  EVM_LINK="$HOME/.local/bin/evm"
+  if [ -L "$EVM_LINK" ] || [ ! -e "$EVM_LINK" ]; then
+    ln -sfn "$AGENT_OS/bin/evm" "$EVM_LINK"; ok "~/.local/bin/evm → agent-os/bin/evm"
+  else
+    warn "~/.local/bin/evm — чужой файл, не трогаю"
+  fi
+  case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "~/.local/bin нет в PATH — добавь, иначе evm не найдётся" ;; esac
+fi
 
 if [ -d "$PAYLOAD/skills" ]; then
   cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor, infra-bootstrap и др.)"

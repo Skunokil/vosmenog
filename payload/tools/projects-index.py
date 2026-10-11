@@ -290,12 +290,32 @@ class Audit:
         return "\n".join(out) + "\n"
 
 
+def resolve(au, query):
+    """Ключ проекта -> (путь, каталог планирования). Точный ключ, затем имя
+    каталога, затем единственный префикс ключа (trans -> transformatornaya).
+    Возвращает (запись | None, список кандидатов при неоднозначности)."""
+    q = query.strip().lower()
+    items = [(p["passport"].get("key", "").lower(), p) for p in au.projects if p["passport"]]
+    for key, p in items:
+        if key == q:
+            return p, []
+    for p in au.projects:
+        if p["path"].name.lower() == q:
+            return p, []
+    pref = [p for key, p in items if key and key.startswith(q)]
+    if len(pref) == 1:
+        return pref[0], []
+    return None, [p["passport"]["key"] for p in pref]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=str(HOME / "projects"))
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--resolve", metavar="КЛЮЧ",
+                    help="напечатать путь<TAB>планирование проекта по ключу; код 1 — нет, 3 — неоднозначно")
     a = ap.parse_args()
     root = Path(a.root).expanduser()
     if not root.is_dir():
@@ -303,6 +323,17 @@ def main():
         return 2
     au = Audit(root)
     au.scan()
+    if a.resolve:
+        p, many = resolve(au, a.resolve)
+        if p is None:
+            if many:
+                print("неоднозначно: " + ", ".join(many), file=sys.stderr)
+                return 3
+            print(f"нет проекта с ключом «{a.resolve}»", file=sys.stderr)
+            return 1
+        plan = p["passport"].get("planning", "")
+        print(f"{p['path']}\t{(root / plan) if plan else ''}")
+        return 0
     if a.summary:
         print(au.summary())
     else:

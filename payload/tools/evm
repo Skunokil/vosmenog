@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""evm - единая команда метода ЭВМ (EPIC-026 vosmenog).
+
+  evm boot <проект> [--role solo|head|hands|text]
+      Печатает, что читать и в каком порядке (платформа -> карта сервера ->
+      роль -> проект -> смена) и что сейчас горит (входящее, соседи, дерево).
+      Только читает, ничего не пишет и не запускает кроме хука порога смены.
+
+Любому агенту с доступом к шеллу достаточно фразы:
+  «Прочитай ~/agent-os/BOOT.md и работай по методу в проекте <ключ>».
+"""
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path(os.path.expanduser("~"))
+HERE = Path(os.path.realpath(__file__)).parent
+INDEXER = HERE / "projects-index.py"
+HOOK = HOME / ".claude/hooks/session-start.sh"
+TEAM = HOME / "projects/team-work"
+BUDGET = 3000
+
+ROLES = ("solo", "head", "hands", "text")
+PERSONA = {
+    "head": (HOME / ".claude/agents/minotaur.md", HOME / "agent-os/head-kit/persona_minotaurus.md"),
+    "hands": (HOME / "agent-os/persona_vosya.md", HOME / ".claude/agents/vosya.md"),
+    "text": (HOME / ".claude/agents/zina.md",),
+}
+
+
+def tilde(p):
+    s = str(p)
+    h = str(HOME)
+    return "~" + s[len(h):] if s == h or s.startswith(h + "/") else s
+
+
+def size(p):
+    try:
+        return len(Path(p).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+
+
+def mark(p):
+    n = size(p)
+    return f"{tilde(p)} ({n} зн.)" if n is not None else f"{tilde(p)} - НЕТ"
+
+
+def resolve(key):
+    """-> (код проекта | None, каталог планирования | None, ошибка | None)."""
+    if INDEXER.is_file():
+        r = subprocess.run([sys.executable, str(INDEXER), "--resolve", key],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            code, _, plan = r.stdout.strip().partition("\t")
+            return Path(code), (Path(plan) if plan else None), None
+        if r.returncode == 3:
+            return None, None, r.stderr.strip()
+    # проект без кода (например home): только планирование
+    if (TEAM / key).is_dir():
+        return None, TEAM / key, None
+    return None, None, f"нет проекта «{key}». Реестр: ~/projects/INDEX.md"
+
+
+def persona_line(role):
+    if role == "solo":
+        return ("solo - один агент, все режимы (думаю / делаю / проверяю); персона не нужна. "
+                "Роль можно сменить: --role head|hands|text")
+    for cand in PERSONA[role]:
+        if cand.is_file():
+            return f"{role} - прочитай {mark(cand)}"
+    return f"{role} - файл персоны не найден (искал: " + ", ".join(tilde(c) for c in PERSONA[role]) + ")"
+
+
+def threshold(cwd):
+    """Порог смены: хук Claude Code, если он есть (решение Р8 EPIC-026)."""
+    if HOOK.is_file():
+        try:
+            r = subprocess.run(["bash", str(HOOK)], cwd=str(cwd) if cwd else None,
+                               capture_output=True, text=True, timeout=15)
+        except (subprocess.TimeoutExpired, OSError):
+            return ["порог смены не ответил за 15 с"]
+        lines = [ln.rstrip() for ln in r.stdout.splitlines() if ln.strip() and not ln.startswith("──")]
+        # часы нужны владельцу, а не загрузке агента: они вторые в хуке, но короткие - оставляем
+        return lines
+    out = ["порога смены нет на этой машине (~/.claude/hooks/session-start.sh): соседние сессии не видны"]
+    if cwd and (cwd / ".git").exists():
+        st = subprocess.run(["git", "-C", str(cwd), "status", "--porcelain"], capture_output=True, text=True)
+        dirty = [ln for ln in st.stdout.splitlines() if not ln.startswith("??")]
+        br = subprocess.run(["git", "-C", str(cwd), "branch", "--show-current"], capture_output=True, text=True)
+        out.append(f"ветка: {br.stdout.strip() or '?'} · незакоммиченных: {len(dirty)}")
+    return out
+
+
+def boot(key, role):
+    code, plan, err = resolve(key)
+    if err:
+        print(f"evm: {err}", file=sys.stderr)
+        return 1
+    shown = (plan.name if plan else (code.name if code else key))
+    L = [f"== evm boot: {shown} · роль: {role} =="]
+    L.append("Читай по порядку (в скобках размер):")
+    L.append(f" 1 платформа  {mark(HOME / 'agent-os/METHOD.md')} - стопы, эпик-цикл; по необходимости")
+    L.append(f" 2 сервер     {mark(TEAM / 'SERVER.md')} - правила этой машины, читать")
+    L.append(f" 3 роль       {persona_line(role)}")
+    if code:
+        proj_md = next((code / n for n in ("AGENTS.md", "CLAUDE.md") if (code / n).is_file()), code / "AGENTS.md")
+        L.append(f" 4 проект     {mark(proj_md)} - карта, гейты, ветки")
+    else:
+        L.append(" 4 проект     кода нет, только планирование")
+    if plan:
+        ns = plan / "sessions/next-session.md"
+        L.append(f" 5 смена      {mark(ns)} - целиком")
+        txt = ns.read_text(encoding="utf-8", errors="replace") if ns.is_file() else ""
+        m = re.search(r"EPIC-(\d+)", txt)       # первый упомянутый эпик - первое дело
+        hit = sorted((plan / "epics").glob(f"EPIC-{m.group(1)}*.md")) if m else []
+        if hit:
+            L.append(f"              эпик из горячей памяти: {mark(hit[0])}")
+        j = plan / "sessions/journal.md"
+        L.append(f"              журнал {tilde(j)} и archive/ - только грепом, не целиком")
+    else:
+        L.append(" 5 смена      нет каталога планирования в team-work")
+    L.append("Живое:")
+    if plan:
+        inc = plan / "exchange/incoming"
+        files = sorted((f for f in inc.glob("*") if f.is_file()), key=lambda f: f.stat().st_mtime, reverse=True) if inc.is_dir() else []
+        L.append(f" входящее: {len(files)} в {tilde(inc)}" + (" - свежие: " + ", ".join(f.name for f in files[:3]) if files else ""))
+    for ln in threshold(code):
+        L.append(" " + ln.strip())
+    L.append("Конец смены: ~/.config/opencode/memory/STARTUP.md, «Завершение сессии» (перезапись next-session, строка журнала).")
+    text = "\n".join(L)
+    print(text)
+    if len(text) > BUDGET:
+        print(f"\n(! вывод {len(text)} зн. при бюджете {BUDGET})", file=sys.stderr)
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="evm", description=__doc__.splitlines()[0],
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd")
+    b = sub.add_parser("boot", help="что читать и что сейчас горит")
+    b.add_argument("project")
+    b.add_argument("--role", choices=ROLES, default="solo")
+    a = ap.parse_args()
+    if a.cmd == "boot":
+        return boot(a.project, a.role)
+    ap.print_help()
+    print("\nПодкоманды threshold и close - в планах (EPIC-026 Ф5).")
+    return 0 if a.cmd is None else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
