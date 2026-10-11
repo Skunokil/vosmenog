@@ -8,7 +8,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PAYLOAD="$SCRIPT_DIR/payload"
+HARNESS="$SCRIPT_DIR/harness"      # метод, вход, инструменты, адаптеры (EPIC-026 Ф4)
+VOS="$SCRIPT_DIR/vosmenog"         # Восьменог: персона и продукт для opencode
+
+# Режим: по умолчанию ставится всё (как раньше). --harness-only — только харнесс,
+# без Восьменога и opencode (машина с одним Claude Code или чужим агентом).
+HARNESS_ONLY=0
+for a in "$@"; do
+  case "$a" in
+    --harness-only) HARNESS_ONLY=1 ;;
+    -h|--help) echo "setup.sh [--harness-only]   (без флага — харнесс + Восьменог)"; exit 0 ;;
+    *) echo "setup.sh: неизвестный флаг '$a'" >&2; exit 2 ;;
+  esac
+done
 
 OC_CONF="$HOME/.config/opencode"
 AGENT_OS="$HOME/agent-os"
@@ -22,7 +34,7 @@ die()  { printf '\033[1;31m  ✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
 # --- 0. Проверки среды -------------------------------------
 say "Проверка среды"
-[ -d "$PAYLOAD" ] || die "Нет папки payload/ рядом со скриптом. Запускай из корня клона."
+[ -d "$HARNESS" ] && [ -d "$VOS" ] || die "Нет папок harness/ и vosmenog/ рядом со скриптом. Запускай из корня клона."
 command -v python3 >/dev/null || die "Нужен python3 (для безопасного слияния конфига)."
 if command -v opencode >/dev/null; then
   ok "opencode найден: $(opencode --version 2>/dev/null || echo '?')"
@@ -38,27 +50,35 @@ ok "$AGENT_OS, $MEMORY, $AGENTS"
 
 # --- 2. Раскладка payload ----------------------------------
 say "Раскладка файлов фреймворка"
-for f in METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md ROADMAP.template.md; do
-  if [ -f "$PAYLOAD/$f" ]; then cp "$PAYLOAD/$f" "$AGENT_OS/"; ok "agent-os/$f"; fi
+DOCS="METHOD.md BOOT.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+for f in $DOCS; do
+  SRC_F=""
+  for d in "$HARNESS" "$VOS"; do [ -f "$d/$f" ] && { SRC_F="$d/$f"; break; }; done
+  if [ -n "$SRC_F" ]; then cp "$SRC_F" "$AGENT_OS/"; ok "agent-os/$f"; fi
 done
+if [ "$HARNESS_ONLY" = "1" ]; then : > "$AGENT_OS/.harness-only"; ok "режим --harness-only (метка agent-os/.harness-only: update.sh её уважает)"; else rm -f "$AGENT_OS/.harness-only"; fi
 
+if [ "$HARNESS_ONLY" != "1" ]; then
 PERSONA_FILE="persona_vosya.md"
-if [ -f "$PAYLOAD/$PERSONA_FILE" ]; then
+if [ -f "$VOS/$PERSONA_FILE" ]; then
   if [ ! -f "$AGENT_OS/$PERSONA_FILE" ]; then
-    cp "$PAYLOAD/$PERSONA_FILE" "$AGENT_OS/"
+    cp "$VOS/$PERSONA_FILE" "$AGENT_OS/"
     ok "agent-os/$PERSONA_FILE (установлен)"
   else
     warn "agent-os/$PERSONA_FILE уже есть — не перезаписан. Правь через проект, не в обход."
   fi
 fi
 
-cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
+cp "$VOS/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
+else
+  warn "--harness-only: персона Воси и агент Vosmenog пропущены"
+fi
 
 # Единый вход (EPIC-026 Ф3): команда evm и её помощник projects-index.py.
-if [ -d "$PAYLOAD/tools" ]; then
+if [ -d "$HARNESS/tools" ]; then
   mkdir -p "$AGENT_OS/bin" "$HOME/.local/bin"
-  for t in "$PAYLOAD/tools/"*; do
+  for t in "$HARNESS/tools/"*; do
     cp "$t" "$AGENT_OS/bin/"; chmod +x "$AGENT_OS/bin/$(basename "$t")"
   done
   ok "agent-os/bin/ (evm, projects-index.py, wt.sh)"
@@ -71,8 +91,11 @@ if [ -d "$PAYLOAD/tools" ]; then
   case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) warn "~/.local/bin нет в PATH — добавь, иначе evm не найдётся" ;; esac
 fi
 
-if [ -d "$PAYLOAD/skills" ]; then
-  cp -r "$PAYLOAD/skills/." "$OC_CONF/skills/"; ok "skills/ (tutor, infra-bootstrap и др.)"
+if [ -d "$HARNESS/skills" ]; then
+  cp -r "$HARNESS/skills/." "$OC_CONF/skills/"; ok "skills/ харнесса (readiness, env-profile, server-audit, oom-guard, infra-bootstrap)"
+fi
+if [ "$HARNESS_ONLY" != "1" ] && [ -d "$VOS/skills" ]; then
+  cp -r "$VOS/skills/." "$OC_CONF/skills/"; ok "skills/ Восьменога (tutor, help, course-project)"
 fi
 
 # --- 2b. Инфраструктурный проект (эталон для скилла infra-bootstrap) ---
@@ -81,15 +104,15 @@ fi
 say "Инфраструктурный проект (~/projects/infra)"
 INFRA="$HOME/projects/infra"
 TEAM_INFRA="$HOME/projects/team-work/infra"
-if [ -d "$PAYLOAD/infra-project" ]; then
+if [ -d "$HARNESS/infra-project" ]; then
   if [ ! -d "$INFRA" ]; then
     mkdir -p "$INFRA"
-    cp "$PAYLOAD/infra-project/"*.sh \
-       "$PAYLOAD/infra-project/.env.example" \
-       "$PAYLOAD/infra-project/.gitignore" \
-       "$PAYLOAD/infra-project/AGENTS.md" \
-       "$PAYLOAD/infra-project/RESTORE.md" \
-       "$PAYLOAD/infra-project/ROADMAP.md" "$INFRA/"
+    cp "$HARNESS/infra-project/"*.sh \
+       "$HARNESS/infra-project/.env.example" \
+       "$HARNESS/infra-project/.gitignore" \
+       "$HARNESS/infra-project/AGENTS.md" \
+       "$HARNESS/infra-project/RESTORE.md" \
+       "$HARNESS/infra-project/ROADMAP.md" "$INFRA/"
     chmod +x "$INFRA/"*.sh
     ok "infra/ развёрнут (скрипты, шаблоны). Креды добавит владелец в .env"
   else
@@ -97,10 +120,10 @@ if [ -d "$PAYLOAD/infra-project" ]; then
   fi
   if [ ! -d "$TEAM_INFRA" ]; then
     mkdir -p "$TEAM_INFRA/epics" "$TEAM_INFRA/backlog" "$TEAM_INFRA/sessions"
-    cp "$PAYLOAD/infra-project/epics/EPIC-001-backup.md" "$TEAM_INFRA/epics/"
-    cp "$PAYLOAD/infra-project/backlog/"*.md "$TEAM_INFRA/backlog/"
+    cp "$HARNESS/infra-project/epics/EPIC-001-backup.md" "$TEAM_INFRA/epics/"
+    cp "$HARNESS/infra-project/backlog/"*.md "$TEAM_INFRA/backlog/"
     printf '# Journal — Infra\n' > "$TEAM_INFRA/sessions/journal.md"
-    sed 's/<проект>/infra/' "$PAYLOAD/next-session.template.md" > "$TEAM_INFRA/sessions/next-session.md"
+    sed 's/<проект>/infra/' "$HARNESS/next-session.template.md" > "$TEAM_INFRA/sessions/next-session.md"
     ok "team-work/infra/ развёрнут (EPIC-001-backup эталон, backlog, journal)"
   else
     warn "~/projects/team-work/infra уже есть — не трогаю"
@@ -108,19 +131,19 @@ if [ -d "$PAYLOAD/infra-project" ]; then
 fi
 
 # --- 2c. Кит головы (файлы для веб-Клода / Минотавра) ------
-if [ -d "$PAYLOAD/shared/skills" ]; then
+if [ -d "$HARNESS/head-kit" ]; then
   mkdir -p "$AGENT_OS/head-kit"
-  cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (session_start, персона, workflow, правила)"
+  cp "$HARNESS/head-kit/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (session_start, персона, workflow, правила)"
 fi
 
-if [ -d "$PAYLOAD/method" ]; then
+if [ -d "$HARNESS/method" ]; then
   mkdir -p "$AGENT_OS/method"
-  cp "$PAYLOAD/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
+  cp "$HARNESS/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
 fi
-cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
-cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
-cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
-cp "$PAYLOAD/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
+cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
+cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
+[ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
+cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
 if [ ! -f "$MEMORY/journal.md" ]; then
   printf '# Journal — Session Log\n' > "$MEMORY/journal.md"; ok "memory/journal.md (создан)"
 else
@@ -128,7 +151,7 @@ else
 fi
 # user-profile.md — журнальный паттерн (есть? → не трогаю)
 if [ ! -f "$MEMORY/user-profile.md" ]; then
-  cp "$PAYLOAD/user-profile.template.md" "$MEMORY/user-profile.md"; ok "memory/user-profile.md (создан)"
+  cp "$HARNESS/user-profile.template.md" "$MEMORY/user-profile.md"; ok "memory/user-profile.md (создан)"
 else
   warn "memory/user-profile.md уже есть — не трогаю (профиль сохранён)"
 fi
@@ -144,12 +167,13 @@ else
 fi
 
 # --- 3. Слияние opencode.json (бережно) --------------------
+if [ "$HARNESS_ONLY" != "1" ]; then
 say "Конфиг opencode.json (instructions[])"
 CONF_FILE="$OC_CONF/opencode.json"
 if [ -f "$CONF_FILE" ]; then
   cp "$CONF_FILE" "$CONF_FILE.bak-$(date +%F-%H%M%S)"; ok "бэкап существующего конфига"
 fi
-python3 - "$CONF_FILE" "$PAYLOAD/opencode.json" << 'PYEOF'
+python3 - "$CONF_FILE" "$VOS/opencode.json" << 'PYEOF'
 import json, os, sys
 conf_path, payload_path = sys.argv[1], sys.argv[2]
 payload = json.load(open(payload_path))
@@ -168,14 +192,16 @@ json.dump(conf, open(conf_path, "w"), indent=2, ensure_ascii=False)
 print("  instructions:", ins)
 PYEOF
 ok "instructions подключены (STARTUP + METHOD)"
+fi
 
 # --- 3a. Карта сервера (слот SERVER.md, EPIC-026) -----------
 #     Платформа знает МЕСТО карты, но не содержимое: нет файла — кладём заготовку,
 #     есть — не трогаем. Подключает в opencode и (если стоит) в Claude Code.
 say "Карта сервера (слот SERVER.md)"
-python3 "$PAYLOAD/connect-server-map.py"
+python3 "$HARNESS/connect-server-map.py"
 
 # --- 4. Периметр (барьер прав Vosmenog) --------------------
+if [ "$HARNESS_ONLY" != "1" ]; then
 say "Периметр: что агент НЕ должен трогать"
 echo "  Назови каталоги прода/секретов через пробел (агенту закроется доступ)."
 echo "  Пример: ~/prod-stack ~/secrets   |   Enter — пропустить."
@@ -225,15 +251,23 @@ if grep -q "agent-os — project launchers" "$BASHRC" 2>/dev/null; then
   warn "go уже в .bashrc — не дублирую"
 else
   printf '\n' >> "$BASHRC"
-  cat "$PAYLOAD/bashrc-snippet.sh" >> "$BASHRC"
+  cat "$VOS/bashrc-snippet.sh" >> "$BASHRC"
   ok "go добавлен в .bashrc (активируй: source ~/.bashrc)"
+fi
+else
+  warn "--harness-only: периметр Восьменога и лаунчер go пропущены"
 fi
 
 # --- 6. Финал ----------------------------------------------
 say "Готово"
-echo "  Проверь режим:"
-echo "    opencode agent list        # должен быть Vosmenog"
-echo "    opencode                   # Tab переключает режимы (build / plan / Vosmenog)"
-echo
-echo "  Дальше — GUIDE.md, раздел «Первый эпик»."
+if [ "$HARNESS_ONLY" = "1" ]; then
+  echo "  Харнесс установлен (без Восьменога). Проверь: evm boot <проект>"
+  echo "  Агенту: «Прочитай ~/agent-os/BOOT.md и работай по методу в проекте <ключ>»."
+else
+  echo "  Проверь режим:"
+  echo "    opencode agent list        # должен быть Vosmenog"
+  echo "    opencode                   # Tab переключает режимы (build / plan / Vosmenog)"
+  echo
+  echo "  Дальше — GUIDE.md, раздел «Первый эпик»."
+fi
 if [ -n "${PERIM:-}" ]; then echo "  Периметр закрыт для: $PERIM"; fi

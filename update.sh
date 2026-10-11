@@ -12,9 +12,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PAYLOAD="$SCRIPT_DIR/payload"
+HARNESS="$SCRIPT_DIR/harness"      # метод, вход, инструменты, адаптеры (EPIC-026 Ф4)
+VOS="$SCRIPT_DIR/vosmenog"         # Восьменог: персона и продукт для opencode
 AGENT_OS="$HOME/agent-os"
 OC_CONF="$HOME/.config/opencode"
+# Режим «только харнесс»: флаг или метка, оставленная setup.sh --harness-only.
+HARNESS_ONLY=0
+for a in "$@"; do [ "$a" = "--harness-only" ] && HARNESS_ONLY=1; done
+[ -f "$AGENT_OS/.harness-only" ] && HARNESS_ONLY=1
 MEMORY="$OC_CONF/memory"
 AGENTS="$OC_CONF/agents"
 
@@ -69,20 +74,19 @@ else
 fi
 
 # 2. разложить ТОЛЬКО метод-контент
-[ -d "$PAYLOAD" ] || die "нет payload/ — это точно клон репо?"
+[ -d "$HARNESS" ] && [ -d "$VOS" ] || die "нет harness/ и vosmenog/ — это точно клон репо?"
 mkdir -p "$AGENT_OS" "$MEMORY"
 # Копируем ВСЕГДА, снимая симлинк, если он остался от старой схемы.
 # Раньше здесь была ветка «на месте симлинк → он актуален после git pull,
 # не копируем». Она была верна, пока установка была git-клоном. После снятия
 # .git (2026-09-09) симлинк стал указывать на замороженный payload, и файл
 # переставал обновляться молча. Установка копий не боится: она никуда не пушится.
-for f in METHOD.md BOOT.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md \
-         FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md \
-         EPIC.template.md TASK.template.md BUG.template.md \
-         project-slots.template.md ROADMAP.template.md; do
-  SRC_F="$PAYLOAD/$f"
-  [ -f "$SRC_F" ] || SRC_F="$SCRIPT_DIR/$f"      # часть доков лежит в корне репо
-  if [ -f "$SRC_F" ]; then
+DOCS="METHOD.md BOOT.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+for f in $DOCS; do
+  SRC_F=""
+  for d in "$HARNESS" "$VOS" "$SCRIPT_DIR"; do [ -f "$d/$f" ] && { SRC_F="$d/$f"; break; }; done   # часть доков лежит в корне репо
+  if [ -n "$SRC_F" ]; then
     [ -L "$AGENT_OS/$f" ] && rm -f "$AGENT_OS/$f"
     cp "$SRC_F" "$AGENT_OS/"; ok "agent-os/$f"
   fi
@@ -94,12 +98,13 @@ done
 #   Теперь: помним хеш того, что раскатали в прошлый раз. Совпадает с тем, что
 #   лежит → человек не трогал, спокойно обновляем. Не совпадает → правил
 #   человек, не трогаем и говорим об этом вслух.
+if [ "$HARNESS_ONLY" != "1" ]; then
 PERSONA="persona_vosya.md"
 PERSONA_HASH_FILE="$OC_CONF/.vosmenog-persona-hash"
-if [ -f "$PAYLOAD/$PERSONA" ]; then
+if [ -f "$VOS/$PERSONA" ]; then
   [ -L "$AGENT_OS/$PERSONA" ] && rm -f "$AGENT_OS/$PERSONA"
   if [ ! -f "$AGENT_OS/$PERSONA" ]; then
-    cp "$PAYLOAD/$PERSONA" "$AGENT_OS/$PERSONA"
+    cp "$VOS/$PERSONA" "$AGENT_OS/$PERSONA"
     md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
     ok "agent-os/$PERSONA (персона поставлена)"
   else
@@ -107,46 +112,51 @@ if [ -f "$PAYLOAD/$PERSONA" ]; then
     PREV="$(cat "$PERSONA_HASH_FILE" 2>/dev/null || true)"
     if [ -n "$PREV" ] && [ "$CUR" != "$PREV" ]; then
       warn "$PERSONA правлена руками — НЕ обновляю (твоя настройка голоса важнее)."
-      printf '        diff %s %s\n' "$AGENT_OS/$PERSONA" "$PAYLOAD/$PERSONA"
+      printf '        diff %s %s\n' "$AGENT_OS/$PERSONA" "$VOS/$PERSONA"
       printf '        правку стоит перенести в источник, иначе она не переживёт переустановку\n'
     else
-      cp "$PAYLOAD/$PERSONA" "$AGENT_OS/$PERSONA"
+      cp "$VOS/$PERSONA" "$AGENT_OS/$PERSONA"
       md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
       ok "agent-os/$PERSONA (персона обновлена)"
     fi
   fi
 fi
-
-if [ -d "$PAYLOAD/method" ]; then
-  mkdir -p "$AGENT_OS/method"
-  cp "$PAYLOAD/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
 fi
-cp "$PAYLOAD/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
-cp "$PAYLOAD/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
+
+if [ -d "$HARNESS/method" ]; then
+  mkdir -p "$AGENT_OS/method"
+  cp "$HARNESS/method/"*.md "$AGENT_OS/method/"; ok "agent-os/method/ (разделы метода по фазе)"
+fi
+cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
+cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
 
 # 2a. глобальный слот инструкций opencode.
 #     opencode берёт первый существующий из [<config>/AGENTS.md, ~/.claude/CLAUDE.md]:
 #     пустой первый слот = чужой роутер (Claude Code) затекает в контекст агента.
-cp "$PAYLOAD/AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"
-cp "$PAYLOAD/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
-cp "$PAYLOAD/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений)"
+[ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
+cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
+cp "$HARNESS/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений)"
 
 # 2b. разложить скиллы (метод-контент: чистые инструкции, прав не несут)
 SKILLS="$HOME/.config/opencode/skills"
-if [ -d "$PAYLOAD/skills" ]; then
+if [ -d "$HARNESS/skills" ]; then
   mkdir -p "$SKILLS"
-  cp -r "$PAYLOAD/skills/." "$SKILLS/"; ok "skills/ (tutor и др.)"
+  cp -r "$HARNESS/skills/." "$SKILLS/"; ok "skills/ харнесса (readiness, env-profile, server-audit, oom-guard, infra-bootstrap)"
+fi
+if [ "$HARNESS_ONLY" != "1" ] && [ -d "$VOS/skills" ]; then
+  mkdir -p "$SKILLS"
+  cp -r "$VOS/skills/." "$SKILLS/"; ok "skills/ Восьменога (tutor, help, course-project)"
 fi
 
 # 2c. раскатать конфиг агента (agents/Vosmenog.md)
 #     с ПЕРЕНОСОМ локального периметра: deny на боевые каталоги,
 #     дописанные setup.sh, переносятся в свежий конфиг.
-if [ -f "$PAYLOAD/agents/Vosmenog.md" ]; then
+if [ "$HARNESS_ONLY" != "1" ] && [ -f "$VOS/agents/Vosmenog.md" ]; then
   mkdir -p "$AGENTS"
   TMP_DENY=""
   if [ -f "$AGENTS/Vosmenog.md" ]; then
     TMP_DENY="$(mktemp)"
-    python3 - "$AGENTS/Vosmenog.md" "$PAYLOAD/agents/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
+    python3 - "$AGENTS/Vosmenog.md" "$VOS/agents/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
 import re, sys
 live, payload, out = sys.argv[1], sys.argv[2], sys.argv[3]
 def denies(src):
@@ -158,7 +168,7 @@ keep = sorted(p for p in local if p.startswith("~/") or p.startswith("/"))
 open(out, "w").write("\n".join(keep))
 PYEOF
   fi
-  cp "$PAYLOAD/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"
+  cp "$VOS/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"
   if [ -n "$TMP_DENY" ] && [ -s "$TMP_DENY" ]; then
     python3 - "$AGENTS/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
 import sys
@@ -185,30 +195,32 @@ PYEOF
 fi
 
 # 2d. кит головы (метод-контент для веб-Клода / Минотавра)
-if [ -d "$PAYLOAD/shared/skills" ]; then
+if [ -d "$HARNESS/head-kit" ]; then
   mkdir -p "$AGENT_OS/head-kit"
-  cp "$PAYLOAD/shared/skills/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
+  cp "$HARNESS/head-kit/"*.md "$AGENT_OS/head-kit/"; ok "agent-os/head-kit/ (кит головы)"
   # индикатор доверия и команда смены — тоже инструменты головы (Claude Code):
   # раньше их брали из payload установки, который после снятия .git стал мёртв.
-  [ -f "$PAYLOAD/statusline.sh" ] && cp "$PAYLOAD/statusline.sh" "$AGENT_OS/head-kit/statusline.sh"
-  [ -f "$PAYLOAD/commands/trust.md" ] && cp "$PAYLOAD/commands/trust.md" "$AGENT_OS/head-kit/trust.md"
+  [ -f "$HARNESS/statusline.sh" ] && cp "$HARNESS/statusline.sh" "$AGENT_OS/head-kit/statusline.sh"
+  [ -f "$HARNESS/commands/trust.md" ] && cp "$HARNESS/commands/trust.md" "$AGENT_OS/head-kit/trust.md"
   ok "agent-os/head-kit/statusline.sh + trust.md (инструменты головы)"
 fi
 
 # 2e. TUI-плагины (панель доверия и др.) — tui.json + plugins/
-if [ -f "$PAYLOAD/tui.json" ]; then
-  cp "$PAYLOAD/tui.json" "$OC_CONF/tui.json"; ok "tui.json (конфиг TUI-плагинов)"
+if [ "$HARNESS_ONLY" != "1" ]; then
+if [ -f "$VOS/tui.json" ]; then
+  cp "$VOS/tui.json" "$OC_CONF/tui.json"; ok "tui.json (конфиг TUI-плагинов)"
 fi
-if [ -d "$PAYLOAD/plugins" ]; then
+if [ -d "$VOS/plugins" ]; then
   mkdir -p "$OC_CONF/plugins"
-  cp "$PAYLOAD/plugins/"*.tsx "$OC_CONF/plugins/" 2>/dev/null; ok "plugins/ (TUI-плагины)"
+  cp "$VOS/plugins/"*.tsx "$OC_CONF/plugins/" 2>/dev/null; ok "plugins/ (TUI-плагины)"
+fi
 fi
 
 # 2g. инструменты раскладки (EPIC-025): индекс проектов и рабочие ветки.
 #     Правила — agent-os/method/layout.md; хук старта зовёт projects-index.py --summary.
-if [ -d "$PAYLOAD/tools" ]; then
+if [ -d "$HARNESS/tools" ]; then
   mkdir -p "$AGENT_OS/bin"
-  for t in "$PAYLOAD/tools/"*; do
+  for t in "$HARNESS/tools/"*; do
     cp "$t" "$AGENT_OS/bin/"; chmod +x "$AGENT_OS/bin/$(basename "$t")"
   done
   ok "agent-os/bin/ (projects-index.py, wt.sh, evm — раскладка и единый вход)"
@@ -229,7 +241,7 @@ fi
 # 2h. карта сервера (EPIC-026, решение Р7): только ДОБАВЛЯЕМ строку в opencode.json
 #     и импорт в ~/.claude/CLAUDE.md, если их нет. Идемпотентно, с бэкапом рядом.
 #     Существующая карта не трогается; нет файла карты — кладётся заготовка.
-python3 "$PAYLOAD/connect-server-map.py"
+python3 "$HARNESS/connect-server-map.py"
 
 # 2f. маркер источника: установка своего git не имеет и без этого файла
 #     не знает, откуда её раскатали. По нему протокол старта (STARTUP.md,
