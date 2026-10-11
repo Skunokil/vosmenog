@@ -32,9 +32,9 @@ PERSONA = {
 
 
 def tilde(p):
-    s = str(p)
-    h = str(HOME)
-    return "~" + s[len(h):] if s == h or s.startswith(h + "/") else s
+    """Путь для вывода. Абсолютный, а не «~/...»: чужие агенты (проверено на Kimi,
+    EPIC-026 Ф3 AC-4) не раскрывают тильду и подставляют выдуманный /home/user."""
+    return str(p)
 
 
 def size(p):
