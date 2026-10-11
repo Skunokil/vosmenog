@@ -31,11 +31,12 @@ INDEXER = HERE / "projects-index.py"
 THRESHOLD = HERE / "evm-threshold"
 TEAM = HOME / "projects/team-work"
 STATE = HOME / ".local/state/evm"
-BUDGET = 3000
-BRIEF_BUDGET = 1500
+BUDGET = 3500            # было 3000; +500 на «Первое дело» (решение владельца 11.10)
+BRIEF_BUDGET = 2300      # было 1500; то же
 STALE_MIN = int(os.environ.get("EVM_STALE_MIN", "30"))
 MEM_MAX = 4000
 JOURNAL_LINE_MAX = 200
+FIRST_TASK_MAX = 600
 
 ROLES = ("solo", "head", "hands", "text")
 PERSONA = {
@@ -202,6 +203,29 @@ def last_shift_line(code, plan):
     return f"прошлая смена: память обновлена {ago(age)} назад{extra}; строка «HEAD самодостаточен»: {head}"
 
 
+# ---------- первое дело ----------
+
+def first_task_block(plan):
+    """Секция «Первое дело…» горячей памяти прямо в блок: порядок чтения говорит, ЧТО читать,
+    а суть смены должна быть в контексте с первой секунды (проверка ds, EPIC-026 Ф5).
+    Нет секции - пишем это вслух: память без структуры, агент должен читать её целиком."""
+    ns = (plan / "sessions/next-session.md") if plan else None
+    if not ns or not ns.is_file():
+        return []
+    txt = ns.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"^##\s+Первое дело[^\n]*\n(.*?)(?=^##\s|\Z)", txt, re.S | re.M)
+    if not m or not m.group(1).strip():
+        return ["Первое дело: секции «Первое дело…» в горячей памяти нет - она без структуры, читай файл целиком "
+                f"({len(txt)} зн.) до первого ответа"]
+    body = m.group(1).strip()
+    cut = len(body) > FIRST_TASK_MAX
+    if cut:
+        body = body[:FIRST_TASK_MAX].rsplit("\n", 1)[0].rstrip()
+    out = ["Первое дело (из горячей памяти" + (", обрезано - полностью в файле" if cut else "") + "):"]
+    out += ["  " + ln if ln.strip() else "" for ln in body.splitlines()]
+    return out
+
+
 # ---------- threshold ----------
 
 def threshold_lines(cwd, limit=None):
@@ -257,6 +281,7 @@ def boot(key, role, brief):
         L.append(f"              журнал {tilde(plan / 'sessions/journal.md')} и archive/ - только грепом, не целиком")
     else:
         L.append(" 5 смена      нет каталога планирования в team-work")
+    L.extend(first_task_block(plan))
     L.append("Живое:")
     ls = last_shift_line(code, plan)
     if ls:

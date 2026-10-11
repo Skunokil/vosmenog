@@ -53,5 +53,18 @@ close >/dev/null
 after="$(cd "$F" && find . -type f ! -path './.local/*' ! -path '*/.git/*' | sort | xargs md5sum | md5sum)"
 t "evm close ничего не пишет (хеши до/после)" "$before" "$after"
 
+echo "== evm boot: первое дело в блоке"
+boot() { HOME="$F" VOSMENOG_PROJECT=demo python3 "$F/agent-os/bin/evm" boot demo "$@"; }
+t "секции нет - сказано вслух" "$(boot | grep -c 'секции «Первое дело')" "1"
+long="$(python3 -c "print('\n'.join('строка %d ' % i + 'x'*40 for i in range(40)))")"
+printf '# mem\n\n## Первое дело следующей смены\n\n%s\n\n## Второе\n\nне должно попасть\n' "$long" > "$MEM"
+out="$(boot)"
+t "секция есть - в блоке" "$(echo "$out" | grep -c 'Первое дело (из горячей памяти')" "1"
+t "длинная секция обрезана с пометкой" "$(echo "$out" | grep -c 'обрезано - полностью в файле')" "1"
+t "соседняя секция не попала" "$(echo "$out" | grep -c 'не должно попасть')" "0"
+t "краткая форма тоже несёт первое дело" "$(boot --brief | grep -c 'Первое дело (из горячей памяти')" "1"
+printf '# mem\n\n## Первое дело\n\nсделать X\n' > "$MEM"
+t "короткая секция - без пометки об обрезке" "$(boot | grep -c 'обрезано')" "0"
+
 [ "$fail" = 0 ] && echo "ВСЕ ТЕСТЫ ЗЕЛЁНЫЕ" || echo "ЕСТЬ ПРОВАЛЫ"
 exit "$fail"
