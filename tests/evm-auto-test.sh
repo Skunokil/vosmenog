@@ -81,9 +81,11 @@ HOME="$H" python3 "$H/agent-os/bin/evm" auto off >/dev/null
 t "off -> выключено" "$(HOME="$H" python3 "$H/agent-os/bin/evm" auto status | grep -c 'выключено')" "1"
 
 echo "== S8: уведомление «Метод обновился» у каждого инструмента своё"
-env_new s8 off; release yes
-HOME="$H" PATH="$H/.local/bin:$PATH" bash "$E/work/update.sh" </dev/null >/dev/null 2>&1       # владелец обновился вручную
+env_new s8 off
 claude_check() { EVM_TOOL=claude HOME="$H" bash "$H/.config/opencode/memory/update-check.sh" 2>&1; }
+check >/dev/null; claude_check >/dev/null          # после установки оба инструмента хоть раз стартовали: отметки созданы
+release yes
+HOME="$H" PATH="$H/.local/bin:$PATH" bash "$E/work/update.sh" </dev/null >/dev/null 2>&1       # владелец обновился вручную
 t "Claude Code: первый старт - рассказывает" "$(claude_check | grep -c 'Метод обновился')" "1"
 t "Claude Code: второй старт - тишина" "$(claude_check)" ""
 t "opencode (прочие): всё ещё рассказывает, отметка у него своя" "$(check | grep -c 'Метод обновился')" "1"
