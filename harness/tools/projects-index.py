@@ -290,7 +290,7 @@ class Audit:
         return "\n".join(out) + "\n"
 
 
-def resolve(au, query):
+def resolve(au, query, exact=False):
     """Ключ проекта -> (путь, каталог планирования). Точный ключ, затем имя
     каталога, затем единственный префикс ключа (trans -> transformatornaya).
     Возвращает (запись | None, список кандидатов при неоднозначности)."""
@@ -302,6 +302,8 @@ def resolve(au, query):
     for p in au.projects:
         if p["path"].name.lower() == q:
             return p, []
+    if exact:
+        return None, []
     pref = [p for key, p in items if key and key.startswith(q)]
     if len(pref) == 1:
         return pref[0], []
@@ -316,6 +318,8 @@ def main():
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--which", metavar="ПУТЬ",
                     help="напечатать ключ проекта, в чьём каталоге лежит ПУТЬ (самый глубокий); код 1 - ни в каком")
+    ap.add_argument("--exact", action="store_true",
+                    help="с --resolve: только точный ключ или имя каталога, без префикса (для разбора слов в hi)")
     ap.add_argument("--resolve", metavar="КЛЮЧ",
                     help="напечатать путь<TAB>планирование проекта по ключу; код 1 — нет, 3 — неоднозначно")
     a = ap.parse_args()
@@ -337,7 +341,7 @@ def main():
         print(best["passport"]["key"])
         return 0
     if a.resolve:
-        p, many = resolve(au, a.resolve)
+        p, many = resolve(au, a.resolve, exact=a.exact)
         if p is None:
             if many:
                 print("неоднозначно: " + ", ".join(many), file=sys.stderr)
