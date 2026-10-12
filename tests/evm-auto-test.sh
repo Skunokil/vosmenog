@@ -27,7 +27,7 @@ release() {
   [ -d "$T/dev/.git" ] || { echo "  FAIL фикстура: нет $T/dev"; fail=1; return 1; }
   case "$T" in /tmp/*|/var/tmp/*) ;; *) echo "  FAIL фикстура: рабочий каталог вне /tmp"; fail=1; return 1;; esac
   case "$1" in
-    yes|no) python3 "$SRC/tests/release-entry.py" "$1" "$T/dev/CHANGELOG.md" ;;
+    yes|no) python3 "$SRC/tests/release-entry.py" "$1" "$T/dev/CHANGELOG.md" "$RANDOM$RANDOM" ;;
   esac
   echo "$RANDOM" >> "$T/dev/harness/BOOT.md"
   git -C "$T/dev" -c user.email=t@t -c user.name=t commit -qam "релиз $1" \
@@ -47,7 +47,7 @@ echo "== S2: включено + безопасный релиз -> накаты�
 env_new s2 on; release yes; out="$(check)"
 t "сказано, что накатывает в фоне" "$(echo "$out" | grep -c 'накатываю в фоне')" "1"
 wait_deploy; t "версия сменилась на свежую" "$([ "$(deployed)" = "$(git -C "$T/origin.git" rev-parse "$BR")" ] && echo fresh)" "fresh"
-t "журнал содержит метку автозапуска" "$(grep -c 'автоматический запуск' "$H/.local/state/evm/auto-update.log")" "1"
+t "журнал содержит метку автозапуска (update.sh после pull перезапускается, метка может быть дважды)" "$([ "$(grep -c 'автоматический запуск' "$H/.local/state/evm/auto-update.log")" -ge 1 ] && echo yes)" "yes"
 t "в установке появился новый BOOT.md" "$(cmp -s "$E/work/harness/BOOT.md" "$H/agent-os/BOOT.md" && echo same)" "same"
 t "следующий старт: «Метод обновился»" "$(check | grep -c 'Метод обновился')" "1"
 t "и дальше тишина" "$(check)" ""
@@ -60,7 +60,7 @@ t "версия не изменилась" "$([ "$(deployed)" = "$D" ] && echo s
 echo "== S4: включено + безопасный релиз, но в клоне свои правки -> вручную"
 env_new s4 on; echo "моя правка" >> "$E/work/harness/BOOT.md"; release yes
 git -C "$E/work" fetch -q 2>/dev/null; out="$(check)"
-t "названа причина про правки" "$(echo "$out" | grep -c 'незакоммиченные правки')" "1"; sleep 3
+t "названа причина про правки" "$(echo "$out" | grep -c 'нужно накатить вручную: в клоне есть незакоммиченные правки')" "1"; sleep 3
 t "версия не изменилась" "$([ "$(deployed)" = "$D" ] && echo same)" "same"
 
 echo "== S5: включено + безопасный релиз, но недавно уже пробовали -> ждёт"
