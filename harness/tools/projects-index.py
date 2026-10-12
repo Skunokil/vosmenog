@@ -136,8 +136,11 @@ class Audit:
                 proj["branch"] = git(d, "rev-parse", "--abbrev-ref", "HEAD") or "?"
                 proj["last"] = (git(d, "log", "-1", "--format=%cs") or "—")
                 self.worktrees_of(d)
+            # закрытое планирование со своим git внутри team-work (например alfa) - не проект, паспорт не нужен
+            planning = depth == 2 and d.parent.name == "team-work" and is_repo
+            proj["planning"] = planning
             self.projects.append(proj)
-            if not pp:
+            if not pp and not planning:
                 self.add("без паспорта", f"{self.rel(d)} — нет блока passport в AGENTS.md/CLAUDE.md")
             if depth == 2 and is_repo and d.parent.name != "team-work" and (d.parent / ".git").is_dir():
                 if git(d.parent, "check-ignore", "-q", d.name) is None:
@@ -262,7 +265,7 @@ class Audit:
             return (pp.get("parent") or pp.get("key") or p["path"].name, bool(pp.get("parent")), str(p["path"]))
         for p in sorted(self.projects, key=order):
             pp = p["passport"] or {}
-            key = pp.get("key", "**?**")
+            key = pp.get("key", "(планирование)" if p.get("planning") else "**?**")
             if pp.get("parent"):
                 key = "↳ " + key
             origin = p.get("origin", "—")
