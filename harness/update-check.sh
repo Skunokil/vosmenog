@@ -19,7 +19,14 @@ PEEK=0
 
 OC_CONF="$HOME/.config/opencode"
 MEMORY="$OC_CONF/memory"
-SEEN_FILE="$MEMORY/.vosmenog-changelog-seen"
+# Отметка «показано» своя у каждого инструмента (EVM_TOOL=claude у хука Claude Code; у остальных - прежняя
+# общая): иначе тот, кто стартовал первым после обновления, гасил уведомление для второго.
+TOOL="${EVM_TOOL:-}"
+SEEN_FILE="$MEMORY/.vosmenog-changelog-seen${TOOL:+.$TOOL}"
+# Первый запуск для нового инструмента: взять значение у общей отметки, чтобы не вываливать всю историю заново.
+if [ -n "$TOOL" ] && [ ! -f "$SEEN_FILE" ] && [ -f "$MEMORY/.vosmenog-changelog-seen" ]; then
+  cp "$MEMORY/.vosmenog-changelog-seen" "$SEEN_FILE" 2>/dev/null || true
+fi
 
 SRC="$(cat "$OC_CONF/.vosmenog-source" 2>/dev/null || true)"
 DEPLOYED="$(cat "$OC_CONF/.vosmenog-deployed" 2>/dev/null || true)"

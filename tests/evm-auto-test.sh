@@ -80,4 +80,23 @@ t "on -> ВКЛЮЧЕНО" "$(HOME="$H" python3 "$H/agent-os/bin/evm" auto statu
 HOME="$H" python3 "$H/agent-os/bin/evm" auto off >/dev/null
 t "off -> выключено" "$(HOME="$H" python3 "$H/agent-os/bin/evm" auto status | grep -c 'выключено')" "1"
 
+echo "== S8: уведомление «Метод обновился» у каждого инструмента своё"
+env_new s8 off; release yes
+HOME="$H" PATH="$H/.local/bin:$PATH" bash "$E/work/update.sh" </dev/null >/dev/null 2>&1       # владелец обновился вручную
+claude_check() { EVM_TOOL=claude HOME="$H" bash "$H/.config/opencode/memory/update-check.sh" 2>&1; }
+t "Claude Code: первый старт - рассказывает" "$(claude_check | grep -c 'Метод обновился')" "1"
+t "Claude Code: второй старт - тишина" "$(claude_check)" ""
+t "opencode (прочие): всё ещё рассказывает, отметка у него своя" "$(check | grep -c 'Метод обновился')" "1"
+t "opencode: второй старт - тишина" "$(check)" ""
+
+echo "== S9: установщик заменяет прежнюю версию хука-обёртки Claude Code, но не правку владельца"
+for case in old edited; do
+  CH="$T/s9-$case"; mkdir -p "$CH/.claude/hooks"
+  if [ "$case" = old ]; then git -C "$SRC" show e679046:harness/adapters/claude-code/hooks/session-start.sh > "$CH/.claude/hooks/session-start.sh"
+  else printf '#!/bin/bash\n# моя правка\n' > "$CH/.claude/hooks/session-start.sh"; fi
+  HOME="$CH" python3 "$SRC/harness/adapters/claude-code/install.py" >/dev/null 2>&1
+done
+t "прежняя версия -> заменена на новую (с меткой EVM_TOOL)" "$(grep -c 'EVM_TOOL=claude' "$T/s9-old/.claude/hooks/session-start.sh")" "1"
+t "правка владельца не тронута" "$(grep -c 'моя правка' "$T/s9-edited/.claude/hooks/session-start.sh")" "1"
+
 echo; [ "$fail" = 0 ] && echo "ВСЕ ТЕСТЫ ЗЕЛЁНЫЕ" || echo "ЕСТЬ ПРОВАЛЫ"; exit "$fail"

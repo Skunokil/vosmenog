@@ -20,6 +20,10 @@ if [[ -n "$sid" ]]; then
   case "$src" in startup|clear) : > "$f" ;; *) [[ -e "$f" ]] || : > "$f" ;; esac
 fi
 
+# Метка инструмента: у Claude Code и у opencode отдельные отметки «обновление показано»,
+# чтобы каждый рассказал об обновлении сам (общая отметка гасила уведомление для второго).
+export EVM_TOOL=claude
+
 evm="$(command -v evm 2>/dev/null || true)"
 [[ -x "$evm" ]] || evm="$HOME/agent-os/bin/evm"
 [[ -x "$evm" ]] || exit 0                       # установки харнесса нет - молчим
