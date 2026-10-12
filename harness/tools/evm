@@ -12,6 +12,9 @@
       Чек-лист закрытия смены. Только читает. Код возврата 1, если есть красное.
   evm guard stop
       Сторож конца смены для хука Stop Claude Code (читает JSON со stdin).
+  evm off | evm on | evm status
+      Постоянный выключатель харнесса: off - хуки молчат, evm boot печатает одну строку, проверка обновлений
+      и автообновление молчат, установщики не возвращают подключения; on - всё обратно. status - состояние.
   evm auto on|off|status
       Автоматическое обновление метода (по умолчанию выключено). Накатывает само только релизы,
       которые автор пометил в CHANGELOG.md строкой <!-- auto: ok -->; остальное - вручную (vosya-update).
@@ -273,6 +276,9 @@ def update_notice():
 # ---------- boot ----------
 
 def boot(key, role, brief):
+    if harness_off():
+        print("Харнесс выключен (evm on - включить). Работай как обычный агент: порядок чтения слоёв, память смены и обновления метода не требуются.")
+        return 0
     if not key:
         key = infer_project()
     if not key:
@@ -401,6 +407,8 @@ def close(key):
 def guard_stop():
     """Хук Stop: один раз за сессию напомнить, что горячая память устарела.
     Не блокирует: сообщение уходит модели (additionalContext) и владельцу (systemMessage)."""
+    if harness_off():
+        return 0
     try:
         data = json.load(sys.stdin)
     except (ValueError, OSError):
@@ -443,6 +451,83 @@ def guard_stop():
         "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": msg},
         "systemMessage": f"evm: горячая память смены старше работы на {ago(lag)} - агента попросили обновить её",
     }, ensure_ascii=False))
+    return 0
+
+
+# ---------- постоянный выключатель харнесса ----------
+
+HARNESS_FLAG = HOME / ".config/vosmenog/harness-off"     # есть файл - харнесс выключен
+
+
+def harness_off():
+    return HARNESS_FLAG.exists()
+
+
+def source_dir():
+    try:
+        d = Path((HOME / ".config/opencode/.vosmenog-source").read_text().strip())
+        return d if d.is_dir() else None
+    except OSError:
+        return None
+
+
+def cmd_off():
+    HARNESS_FLAG.parent.mkdir(parents=True, exist_ok=True)
+    HARNESS_FLAG.write_text(time.strftime("%F %T") + "\n", encoding="utf-8")
+    print("Харнесс ВЫКЛЮЧЕН (постоянно, пока не скажете evm on).\n"
+          "  Перестало работать:\n"
+          "   - хуки Claude Code (порядок чтения на старте и сторож памяти) молчат;\n"
+          "   - evm boot печатает одну строку; проверка обновлений и автообновление молчат;\n"
+          "   - update.sh и setup.sh не возвращают хуки, строку карты сервера и настройки (раньше удалённое возвращалось).\n"
+          "  Осталось как есть:\n"
+          "   - файлы метода на диске и обновление командой vosya-update (файлы обновятся, подключения - нет);\n"
+          "   - строка @…/SERVER.md в ~/.claude/CLAUDE.md и строки instructions в opencode.json: это просто текст правил,\n"
+          "     их можно убрать руками;\n"
+          "   - команды evm close, evm threshold, evm status по явному вызову.\n"
+          "  Включить обратно: evm on")
+    return 0
+
+
+def cmd_on():
+    was = harness_off()
+    try:
+        HARNESS_FLAG.unlink()
+    except OSError:
+        pass
+    print("Харнесс ВКЛЮЧЁН." if was else "Харнесс и так был включён.")
+    src = source_dir()
+    if not src:
+        print("  Не нашёл клон репозитория (~/.config/opencode/.vosmenog-source): запустите vosya-update, он вернёт подключения.")
+        return 0
+    for rel in ("harness/connect-server-map.py", "harness/adapters/claude-code/install.py"):
+        f = src / rel
+        if f.is_file():
+            r = subprocess.run([sys.executable, str(f)], capture_output=True, text=True)
+            for ln in r.stdout.splitlines():
+                print("  " + ln)
+    print("  Хуки заработают со следующей сессии Claude Code.")
+    return 0
+
+
+def cmd_status():
+    print(f"Харнесс: {'ВЫКЛЮЧЕН (evm on - включить)' if harness_off() else 'включён'}")
+    print(f"Автообновление: {'включено' if auto_enabled() else 'выключено'} (evm auto on|off)")
+    try:
+        import json as _json
+        conf = _json.loads((HOME / ".claude/settings.json").read_text(encoding="utf-8"))
+        hooks = conf.get("hooks", {})
+        has = lambda ev, needle: any(needle in str(h.get("command", "")) for e in hooks.get(ev, []) for h in e.get("hooks", []))
+        print(f"Хуки Claude Code в settings.json: старт сессии {'есть' if has('SessionStart', 'session-start.sh') else 'нет'}, "
+              f"сторож памяти {'есть' if has('Stop', 'stop-guard.sh') else 'нет'}"
+              + ("; disableAllHooks=true - Claude Code их не запускает" if conf.get("disableAllHooks") else ""))
+    except (OSError, ValueError):
+        print("Хуки Claude Code: ~/.claude/settings.json не найден или не читается")
+    src = source_dir()
+    try:
+        dep = (HOME / ".config/opencode/.vosmenog-deployed").read_text().strip()[:7]
+    except OSError:
+        dep = "?"
+    print(f"Установленная версия: {dep}; клон: {src if src else 'не найден'}")
     return 0
 
 
@@ -495,7 +580,7 @@ def auto_run(source):
     для владельца. Условия (все): режим on; клон чистый и на main; обновление - fast-forward; каждая новая запись
     CHANGELOG.md помечена <!-- auto: ok --> (автор релиза утверждает: решений от пользователя не требуется);
     не чаще раза в 6 часов; фонового обновления сейчас нет."""
-    if not auto_enabled():
+    if harness_off() or not auto_enabled():
         return 0
     src = Path(source) if source else None
     if not src:
@@ -584,6 +669,9 @@ def main():
     c.add_argument("project", nargs="?")
     g = sub.add_parser("guard", help="сторожа для хуков")
     g.add_argument("what", choices=["stop"])
+    sub.add_parser("off", help="выключить харнесс постоянно")
+    sub.add_parser("on", help="включить харнесс обратно")
+    sub.add_parser("status", help="состояние харнесса, автообновления, хуков")
     au = sub.add_parser("auto", help="автоматическое обновление метода: on | off | status")
     au.add_argument("action", choices=["on", "off", "status", "run"])
     au.add_argument("--source")
@@ -597,6 +685,12 @@ def main():
         return close(a.project)
     if a.cmd == "guard":
         return guard_stop()
+    if a.cmd == "off":
+        return cmd_off()
+    if a.cmd == "on":
+        return cmd_on()
+    if a.cmd == "status":
+        return cmd_status()
     if a.cmd == "auto":
         if a.action in ("on", "off"):
             auto_set(a.action)

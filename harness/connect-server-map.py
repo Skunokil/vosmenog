@@ -92,6 +92,9 @@ def claude_code():
 
 
 def main():
+    if os.path.exists(os.path.join(HOME, ".config/vosmenog/harness-off")):
+        same("харнесс выключен (evm off): карту сервера и подключения не добавляю; evm on включит")
+        return 0
     slot_file()
     opencode()
     claude_code()

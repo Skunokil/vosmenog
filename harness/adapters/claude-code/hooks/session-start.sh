@@ -8,6 +8,8 @@
 #   resume, fork            - краткий (контекст на месте, нужна только смена и обстановка).
 # Проект берётся из $VOSMENOG_PROJECT или каталога сессии; не определился - остаётся порог.
 set -uo pipefail
+# Постоянный выключатель харнесса (evm off): флаг-файл. Есть флаг - хук молчит и ничего не делает.
+[[ -e "$HOME/.config/vosmenog/harness-off" ]] && exit 0
 
 in="$(cat 2>/dev/null || true)"
 src="$(jq -r '.source // "startup"' <<<"$in" 2>/dev/null || echo startup)"

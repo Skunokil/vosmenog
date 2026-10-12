@@ -52,6 +52,10 @@ KNOWN_OLD = {
     "hooks/session-start.sh": [
         "17b28a5a1d414dfcb786",   # до Ф5: полный порог смены прямо в хуке (064c100)
         "8d02b18e953a106b9dcb",   # Ф5: обёртка над evm boot, без метки инструмента (e679046)
+        "fee121782f98f348bd42",   # с меткой EVM_TOOL, без выключателя (f8db652)
+    ],
+    "hooks/stop-guard.sh": [
+        "5a7a0d82419528a2a5f7",   # сторож Stop без выключателя (e679046)
     ],
 }
 
@@ -130,6 +134,9 @@ def settings():
 
 
 def main():
+    if os.path.exists(os.path.join(os.path.expanduser("~"), ".config/vosmenog/harness-off")):
+        same("харнесс выключен (evm off): хуки и настройки Claude Code не трогаю; evm on включит")
+        return 0
     if not os.path.isdir(CC):
         same("Claude Code не найден (~/.claude нет) - адаптер пропущен")
         return 0
