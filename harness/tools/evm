@@ -12,6 +12,9 @@
       Чек-лист закрытия смены. Только читает. Код возврата 1, если есть красное.
   evm guard stop
       Сторож конца смены для хука Stop Claude Code (читает JSON со stdin).
+  evm auto on|off|status
+      Автоматическое обновление метода (по умолчанию выключено). Накатывает само только релизы,
+      которые автор пометил в CHANGELOG.md строкой <!-- auto: ok -->; остальное - вручную (vosya-update).
 
 Любому агенту с доступом к шеллу достаточно фразы:
   «Прочитай /home/<пользователь>/agent-os/BOOT.md и работай по методу в проекте <ключ>».
@@ -443,6 +446,129 @@ def guard_stop():
     return 0
 
 
+# ---------- автообновление ----------
+
+AUTO_CFG = HOME / ".config/vosmenog/auto-update"        # содержимое: on | off (нет файла = off)
+AUTO_LAST = STATE / "auto-update.last"                  # метка времени последнего запуска
+AUTO_RUN = STATE / "auto-update.running"                # pid фонового update.sh
+AUTO_LOG = STATE / "auto-update.log"
+AUTO_INTERVAL = int(os.environ.get("EVM_AUTO_INTERVAL_MIN", "360")) * 60
+OC_CONF = HOME / ".config/opencode"
+AUTO_MARK = "<!-- auto: ok -->"
+
+
+def auto_enabled():
+    try:
+        return AUTO_CFG.read_text(encoding="utf-8").strip().lower() == "on"
+    except OSError:
+        return False
+
+
+def auto_set(mode):
+    AUTO_CFG.parent.mkdir(parents=True, exist_ok=True)
+    AUTO_CFG.write_text(mode + "\n", encoding="utf-8")
+
+
+def _entries(text):
+    """Записи CHANGELOG.md: [(заголовок, помечена_ли_auto_ok)]. Метка - в пяти строках под заголовком."""
+    lines = text.splitlines()
+    out = []
+    for i, ln in enumerate(lines):
+        if ln.startswith("## "):
+            out.append((ln.strip(), any(AUTO_MARK in x for x in lines[i + 1:i + 6])))
+    return out
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, ValueError):
+        return False
+    except PermissionError:
+        return True
+
+
+def auto_run(source):
+    """Решает, можно ли накатить обновление само, и если можно - запускает update.sh в фоне.
+    Вызывается из update-check.sh, когда на GitHub есть то, чего нет на машине. Печатает одну-две строки
+    для владельца. Условия (все): режим on; клон чистый и на main; обновление - fast-forward; каждая новая запись
+    CHANGELOG.md помечена <!-- auto: ok --> (автор релиза утверждает: решений от пользователя не требуется);
+    не чаще раза в 6 часов; фонового обновления сейчас нет."""
+    if not auto_enabled():
+        return 0
+    src = Path(source) if source else None
+    if not src:
+        try:
+            src = Path((OC_CONF / ".vosmenog-source").read_text().strip())
+        except OSError:
+            return 0
+    if not (src / "update.sh").is_file():
+        return 0
+
+    def say(why):
+        print(f"Автообновление включено, но эту версию нужно накатить вручную: {why}. Команда: vosya-update")
+        return 0
+
+    if git(src, "rev-parse", "--abbrev-ref", "HEAD").strip() != "main":
+        return say("клон стоит не на ветке main")
+    if git(src, "status", "--porcelain", "--untracked-files=no").strip():
+        return say("в клоне есть незакоммиченные правки (они уехали бы на машину, но не в репозиторий)")
+    if subprocess.run(["git", "-C", str(src), "merge-base", "--is-ancestor", "HEAD", "origin/main"]).returncode != 0:
+        return say("обновление не сводится простым «вперёд» (в клоне свои коммиты)")
+    new_text = git(src, "show", "origin/main:CHANGELOG.md")
+    try:
+        dep = (OC_CONF / ".vosmenog-deployed").read_text().strip()
+    except OSError:
+        dep = ""
+    old_text = git(src, "show", f"{dep}:CHANGELOG.md") if dep else ""
+    old = {h for h, _ in _entries(old_text)}
+    fresh = [(h, ok) for h, ok in _entries(new_text) if h not in old]
+    if not fresh:
+        return say("в обновлении нет новой записи в CHANGELOG.md (по правилу такие накатывает владелец)")
+    manual = [h for h, ok in fresh if not ok]
+    if manual:
+        return say("автор релиза не пометил как безопасное: " + "; ".join(h[3:60] for h in manual))
+    STATE.mkdir(parents=True, exist_ok=True)
+    try:
+        if _alive(int(AUTO_RUN.read_text().strip())):
+            return 0                                    # уже идёт
+    except (OSError, ValueError):
+        pass
+    try:
+        if time.time() - AUTO_LAST.stat().st_mtime < AUTO_INTERVAL:
+            return 0                                    # недавно пробовали
+    except OSError:
+        pass
+    log = open(AUTO_LOG, "a", encoding="utf-8")
+    log.write(f"\n=== {time.strftime('%F %T')} автообновление: {len(fresh)} новых записей CHANGELOG, все помечены auto: ok ===\n")
+    log.flush()
+    proc = subprocess.Popen(["bash", str(src / "update.sh"), "--auto"], cwd=str(src), stdin=subprocess.DEVNULL,
+                            stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    AUTO_RUN.write_text(str(proc.pid))
+    AUTO_LAST.write_text(str(int(time.time())))
+    print(f"Автообновление: накатываю в фоне ({len(fresh)} новых записей CHANGELOG, все помечены безопасными). "
+          f"Журнал: {AUTO_LOG}. Новые инструкции и хуки заработают со следующей сессии; что именно изменилось - увидите там как «Метод обновился».")
+    return 0
+
+
+def auto_status():
+    print(f"Автообновление: {'ВКЛЮЧЕНО' if auto_enabled() else 'выключено'}  (файл {AUTO_CFG})")
+    try:
+        t = AUTO_LAST.stat().st_mtime
+        print(f"Последний запуск: {time.strftime('%F %T', time.localtime(t))}; журнал {AUTO_LOG}")
+    except OSError:
+        print("Запусков не было.")
+    try:
+        pid = int(AUTO_RUN.read_text().strip())
+        print(f"Фоновое обновление: {'идёт, pid ' + str(pid) if _alive(pid) else 'не идёт'}")
+    except (OSError, ValueError):
+        pass
+    print("Накатывается само только то, что автор релиза пометил в CHANGELOG.md строкой " + AUTO_MARK + ";\n"
+          "остальное - вручную: vosya-update. Выключить: evm auto off.")
+    return 0
+
+
 # ---------- main ----------
 
 def main():
@@ -458,6 +584,9 @@ def main():
     c.add_argument("project", nargs="?")
     g = sub.add_parser("guard", help="сторожа для хуков")
     g.add_argument("what", choices=["stop"])
+    au = sub.add_parser("auto", help="автоматическое обновление метода: on | off | status")
+    au.add_argument("action", choices=["on", "off", "status", "run"])
+    au.add_argument("--source")
     a = ap.parse_args()
     if a.cmd == "boot":
         return boot(a.project, a.role, a.brief)
@@ -468,6 +597,15 @@ def main():
         return close(a.project)
     if a.cmd == "guard":
         return guard_stop()
+    if a.cmd == "auto":
+        if a.action in ("on", "off"):
+            auto_set(a.action)
+            print("Автообновление " + ("ВКЛЮЧЕНО: свежий релиз, который автор пометил безопасным, накатится в фоне на старте сессии."
+                                      if a.action == "on" else "выключено: обновления ставятся только вручную (vosya-update)."))
+            return 0
+        if a.action == "status":
+            return auto_status()
+        return auto_run(a.source)
     ap.print_help()
     return 0
 

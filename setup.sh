@@ -272,6 +272,18 @@ printf '%s\n' "$SCRIPT_DIR" > "$OC_CONF/.vosmenog-source"
 git -C "$SCRIPT_DIR" rev-parse HEAD > "$OC_CONF/.vosmenog-deployed" 2>/dev/null || true
 ok ".vosmenog-source / .vosmenog-deployed (откуда раскатано; нужны для vosya-update и проверки обновлений)"
 
+# --- 5b. Автоматическое обновление ---------------------------
+say "Автоматическое обновление метода"
+echo "  Когда на GitHub выходит релиз, который автор пометил безопасным (решений от вас не требует),"
+echo "  метод может обновиться сам, в фоне, на старте сессии. Остальные релизы ставите вы: vosya-update."
+echo "  Выключить в любой момент: evm auto off. Без терминала вопрос не задаётся, автообновление остаётся выключенным."
+if read -r -p "  Включить автообновление? [Y/n]: " AUTOUP; then
+  case "${AUTOUP:-y}" in n|N|no|No|нет|Нет) AUTO_SETUP=off ;; *) AUTO_SETUP=on ;; esac
+else
+  AUTO_SETUP=off; echo
+fi
+python3 "$AGENT_OS/bin/evm" auto "$AUTO_SETUP" >/dev/null && ok "автообновление: $AUTO_SETUP (меняется командой evm auto on|off)"
+
 # --- 6. Финал ----------------------------------------------
 say "Готово"
 if [ "$HARNESS_ONLY" = "1" ]; then

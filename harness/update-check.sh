@@ -62,6 +62,10 @@ if git -C "$SRC" fetch --quiet origin main 2>/dev/null; then
   if [ "${N:-0}" -gt 0 ]; then
     echo "Вышло обновление Vosmenog ($N коммит(ов)) — не раскатано. Накати: $SRC/update.sh"
     changelog_brief "origin/main"
+    if [ "$PEEK" = "0" ]; then
+      EVM="$(command -v evm 2>/dev/null || true)"; [ -x "$EVM" ] || EVM="$HOME/agent-os/bin/evm"
+      [ -x "$EVM" ] && "$EVM" auto run --source "$SRC" 2>/dev/null
+    fi
     git -C "$SRC" log --oneline "$BASE..origin/main" 2>/dev/null | sed 's/^/  /'
   fi
 fi

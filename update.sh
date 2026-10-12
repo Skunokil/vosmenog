@@ -27,7 +27,11 @@ ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$1"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$1"; }
 die()  { printf '\033[1;31m  ✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
+AUTO_MODE=0
+for a in "$@"; do [ "$a" = "--auto" ] && AUTO_MODE=1; done
 printf '\n\033[1;36m==> Обновление Vosmenog (метод-контент)\033[0m\n'
+[ "$AUTO_MODE" = "1" ] && printf '  (автоматический запуск: evm auto; отключить - evm auto off)\n'
+
 
 # 1. подтянуть репо (только fast-forward — без молчаливых мержей)
 cd "$SCRIPT_DIR"
