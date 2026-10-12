@@ -256,7 +256,10 @@ def update_notice():
         r = subprocess.run(["bash", str(UPDATE_CHECK)], capture_output=True, text=True, timeout=UPDATE_TIMEOUT)
     except (subprocess.TimeoutExpired, OSError):
         return []
-    lines = [ln.rstrip() for ln in r.stdout.splitlines() if ln.strip()]
+    # Хеши коммитов и списки файлов агенту на старте не нужны: ему нужен пересказ по CHANGELOG.md,
+    # а после долгого перерыва эти списки занимают тысячи знаков. Полный вывод - в update-check.sh.
+    lines = [ln.rstrip() for ln in r.stdout.splitlines()
+             if ln.strip() and not re.match(r"^\s+[0-9a-f]{7,} ", ln) and not ln.startswith("    ") and ln.strip() != "файлы:"]
     if not lines:
         return []
     return (["Обновление метода: расскажи владельцу по-человечески, по этому тексту (что нового, нужно ли что-то делать). "
