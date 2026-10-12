@@ -247,6 +247,32 @@ python3 "$HARNESS/connect-server-map.py"
 #     ~/.claude/settings.json. Только добавление; отличающийся файл не затирается; нет ~/.claude - пропуск.
 python3 "$HARNESS/adapters/claude-code/install.py"
 
+# 2j. мёртвая команда vosya-update в ~/.bashrc (EPIC-026): до 2026-10-12 установщик клал
+#     alias на ~/agent-os/update.sh, которого в установке нет. Заменяем ровно эту строку функцией
+#     (с копией .bashrc рядом); всё остальное в .bashrc не трогаем. Нет такой строки - ничего не делаем.
+BASHRC="$HOME/.bashrc"
+if [ -f "$BASHRC" ] && grep -qxF 'alias vosya-update="$HOME/agent-os/update.sh"' "$BASHRC"; then
+  cp -p "$BASHRC" "$BASHRC.bak-$(date +%F-%H%M%S)"
+  python3 - "$BASHRC" << 'PYEOF'
+import sys
+p = sys.argv[1]
+old = 'alias vosya-update="$HOME/agent-os/update.sh"'
+new = """vosya-update() {
+  local src
+  src="$(cat "$HOME/.config/opencode/.vosmenog-source" 2>/dev/null)"
+  if [ -n "$src" ] && [ -x "$src/update.sh" ]; then
+    "$src/update.sh" "$@"
+  else
+    echo "vosya-update: не нашёл клон репозитория (~/.config/opencode/.vosmenog-source). Запусти ./update.sh из папки клона." >&2
+    return 1
+  fi
+}"""
+s = open(p, encoding="utf-8").read()
+open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
+PYEOF
+  ok "~/.bashrc: неработающий alias vosya-update заменён функцией (копия .bashrc.bak-... рядом)"
+fi
+
 # 2f. маркер источника: установка своего git не имеет и без этого файла
 #     не знает, откуда её раскатали. По нему протокол старта (STARTUP.md,
 #     «Уведомление об обновлении») ходит в источник за changelog и за
@@ -264,4 +290,10 @@ echo "    • journal.md / archive — память (данные)"
 echo "    • .vosmenog-changelog-seen — маркер показанного changelog (состояние сессии)"
 echo "    • deny-периметр среды — переносится при раскатке агента (см. блок 2c)"
 echo "    • tui.json — раскатывается из дистрибутива (перезаписью)"
+# 4. что нового - простыми словами (CHANGELOG.md, верхняя запись). Печатаем только если версия сменилась.
+if [ -f "$SCRIPT_DIR/CHANGELOG.md" ] && [ -n "$OLD_HEAD" ] && [ "$OLD_HEAD" != "$NEW_HEAD" ]; then
+  printf '\n\033[1;36m==> Что нового (простыми словами, из CHANGELOG.md)\033[0m\n\n'
+  awk '/^## /{n++} n==1' "$SCRIPT_DIR/CHANGELOG.md"
+  printf '\n  Полный текст: %s/CHANGELOG.md\n  Новые инструкции и хуки действуют со следующей сессии агента - открой новую.\n' "$SCRIPT_DIR"
+fi
 printf '\n\033[1;32m==> Готово. Метод обновлён, барьеры и память на месте.\033[0m\n'

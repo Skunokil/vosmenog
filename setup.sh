@@ -263,6 +263,14 @@ else
   warn "--harness-only: периметр Восьменога и лаунчер go пропущены"
 fi
 
+# --- 5a. Маркеры источника ----------------------------------
+#     По ним vosya-update находит клон, а проверка обновлений (update-check.sh) - что уже
+#     раскатано. Раньше их писал только update.sh, и сразу после установки обе команды
+#     источника не знали.
+printf '%s\n' "$SCRIPT_DIR" > "$OC_CONF/.vosmenog-source"
+git -C "$SCRIPT_DIR" rev-parse HEAD > "$OC_CONF/.vosmenog-deployed" 2>/dev/null || true
+ok ".vosmenog-source / .vosmenog-deployed (откуда раскатано; нужны для vosya-update и проверки обновлений)"
+
 # --- 6. Финал ----------------------------------------------
 say "Готово"
 if [ "$HARNESS_ONLY" = "1" ]; then

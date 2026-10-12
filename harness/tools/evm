@@ -240,6 +240,30 @@ def threshold_lines(cwd, limit=None):
     return lines[:limit] if limit else lines
 
 
+# ---------- обновление метода ----------
+
+UPDATE_CHECK = HOME / ".config/opencode/memory/update-check.sh"
+UPDATE_TIMEOUT = 6      # с: проверка ходит в сеть (git fetch); хук старта живёт 10 с, задержка не должна его ломать
+
+
+def update_notice():
+    """Блок «Обновление метода» из update-check.sh. Пусто, если нечего сказать, нет сети или нет источника.
+    Обычный запуск update-check ставит отметку «показано»: уведомление об уже раскатанном придёт один раз,
+    о нераскатанном - на каждом старте, пока владелец не запустит vosya-update."""
+    if not UPDATE_CHECK.is_file():
+        return []
+    try:
+        r = subprocess.run(["bash", str(UPDATE_CHECK)], capture_output=True, text=True, timeout=UPDATE_TIMEOUT)
+    except (subprocess.TimeoutExpired, OSError):
+        return []
+    lines = [ln.rstrip() for ln in r.stdout.splitlines() if ln.strip()]
+    if not lines:
+        return []
+    return (["Обновление метода: расскажи владельцу по-человечески, по этому тексту (что нового, нужно ли что-то делать). "
+             "Накатывает он сам командой vosya-update; сам update.sh без его просьбы не запускай:"]
+            + ["  " + ln for ln in lines[:14]])
+
+
 # ---------- boot ----------
 
 def boot(key, role, brief):
@@ -292,6 +316,8 @@ def boot(key, role, brief):
         L.append(f" входящее: {len(files)} в {tilde(inc)}" + (" - свежие: " + ", ".join(f.name for f in files[:3]) if files else ""))
     for ln in threshold_lines(code, limit=9 if brief else None):
         L.append(" " + ln.strip())
+    if not brief:
+        L.extend(update_notice())
     L.append("Конец смены: `evm close` (чек-лист) и STARTUP.md, «Завершение сессии».")
     text = "\n".join(L)
     print(text)

@@ -29,6 +29,14 @@ DEPLOYED="$(cat "$OC_CONF/.vosmenog-deployed" 2>/dev/null || true)"
 [ -n "$SRC" ] && [ -d "$SRC" ] || exit 0
 git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
+# Краткий пересказ верхней записи CHANGELOG.md из ref: заголовок и пронумерованные пункты.
+# Агент пересказывает владельцу ПО ЭТОМУ ТЕКСТУ, а не по хешам коммитов.
+changelog_brief() {
+  git -C "$SRC" show "$1:CHANGELOG.md" 2>/dev/null | awk '/^## /{n++} n==1' \
+    | awk 'NR==1{print "  " $0} /^\*\*[0-9]+\./{print "  - " substr($0,1,170)}'
+  echo "  Полностью: $SRC/CHANGELOG.md (на GitHub - в корне репозитория)"
+}
+
 # --- А. раскатано, но ещё не показано ------------------------
 if [ -n "$DEPLOYED" ]; then
   SEEN="$(cat "$SEEN_FILE" 2>/dev/null || true)"
@@ -38,6 +46,7 @@ if [ -n "$DEPLOYED" ]; then
   elif [ "$SEEN" != "$DEPLOYED" ]; then
     if git -C "$SRC" cat-file -e "$SEEN^{commit}" 2>/dev/null; then
       echo "Метод обновился, вот что нового:"
+      changelog_brief "$DEPLOYED"
       git -C "$SRC" log --oneline "$SEEN..$DEPLOYED" | sed 's/^/  /'
       echo "  файлы:"
       git -C "$SRC" diff --name-only "$SEEN..$DEPLOYED" | sed 's/^/    /'
@@ -52,6 +61,7 @@ if git -C "$SRC" fetch --quiet origin main 2>/dev/null; then
   N="$(git -C "$SRC" rev-list --count "$BASE..origin/main" 2>/dev/null || echo 0)"
   if [ "${N:-0}" -gt 0 ]; then
     echo "Вышло обновление Vosmenog ($N коммит(ов)) — не раскатано. Накати: $SRC/update.sh"
+    changelog_brief "origin/main"
     git -C "$SRC" log --oneline "$BASE..origin/main" 2>/dev/null | sed 's/^/  /'
   fi
 fi

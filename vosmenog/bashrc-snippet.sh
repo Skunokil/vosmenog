@@ -20,11 +20,22 @@ go() {
 }
 
 # ------------------------------------------------------------
-#  vosya-update — накатить метод-контент из ~/agent-os (git pull +
-#  раскладка дистрибутива). Реальная команда для того, что раньше было
-#  только именем в документации.
+#  vosya-update — обновить метод: запускает update.sh из вашего клона
+#  репозитория (git pull + раскладка дистрибутива + пересказ «что нового»).
+#  Где клон — берётся из ~/.config/opencode/.vosmenog-source, который пишут
+#  setup.sh и update.sh. (До 2026-10-12 здесь был alias на ~/agent-os/update.sh,
+#  которого в установке нет, — команда не работала.)
 # ------------------------------------------------------------
-alias vosya-update="$HOME/agent-os/update.sh"
+vosya-update() {
+  local src
+  src="$(cat "$HOME/.config/opencode/.vosmenog-source" 2>/dev/null)"
+  if [ -n "$src" ] && [ -x "$src/update.sh" ]; then
+    "$src/update.sh" "$@"
+  else
+    echo "vosya-update: не нашёл клон репозитория (~/.config/opencode/.vosmenog-source). Запусти ./update.sh из папки клона." >&2
+    return 1
+  fi
+}
 
 # ------------------------------------------------------------
 #  Раскладка проектов (EPIC-025, ~/agent-os/method/layout.md):
