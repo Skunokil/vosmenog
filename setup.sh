@@ -145,6 +145,7 @@ cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
 [ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
 cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
+cp "$HARNESS/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений: раньше его ставил только update.sh, и новый пользователь не получал уведомлений)"
 if [ ! -f "$MEMORY/journal.md" ]; then
   printf '# Journal — Session Log\n' > "$MEMORY/journal.md"; ok "memory/journal.md (создан)"
 else
