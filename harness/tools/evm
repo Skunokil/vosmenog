@@ -31,10 +31,37 @@ import sys
 import time
 from pathlib import Path
 
-HOME = Path(os.path.expanduser("~"))
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+HOME = Path(os.environ.get("HOME") or os.path.expanduser("~"))
 HERE = Path(os.path.realpath(__file__)).parent
 INDEXER = HERE / "projects-index.py"
 THRESHOLD = HERE / "evm-threshold"
+
+
+def bash_cmd(script):
+    """Вызов bash. На Windows по имени звать нельзя: CreateProcess ищет в System32
+    раньше PATH и находит WSL-овый bash.exe, который не понимает путей C:\\... -
+    порог смены и проверка обновлений молча пропадали. Ищем MSYS-bash (Git for
+    Windows) в PATH сами и отдаём нативный путь. На Unix поведение не меняется."""
+    if os.name != "nt":
+        return ["bash", str(script)]
+    exe = None
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        cand = os.path.join(d.strip('"'), "bash.exe")
+        if os.path.exists(cand) and "System32" not in cand and "WindowsApps" not in cand:
+            exe = cand
+            break
+    return [exe or "bash", str(script)]
+
+
 TEAM = HOME / "projects/team-work"
 STATE = HOME / ".local/state/evm"
 BUDGET = 3500            # было 3000; +500 на «Первое дело» (решение владельца 11.10)
@@ -238,7 +265,7 @@ def threshold_lines(cwd, limit=None):
     if not THRESHOLD.is_file():
         return ["порог смены недоступен: нет evm-threshold рядом с evm (повтори update.sh)"]
     try:
-        r = subprocess.run(["bash", str(THRESHOLD)], cwd=str(cwd) if cwd else None,
+        r = subprocess.run(bash_cmd(THRESHOLD), cwd=str(cwd) if cwd else None,
                            capture_output=True, text=True, timeout=15)
     except (subprocess.TimeoutExpired, OSError):
         return ["порог смены не ответил за 15 с"]
@@ -259,7 +286,7 @@ def update_notice():
     if not UPDATE_CHECK.is_file():
         return []
     try:
-        r = subprocess.run(["bash", str(UPDATE_CHECK)], capture_output=True, text=True, timeout=UPDATE_TIMEOUT)
+        r = subprocess.run(bash_cmd(UPDATE_CHECK), capture_output=True, text=True, timeout=UPDATE_TIMEOUT)
     except (subprocess.TimeoutExpired, OSError):
         return []
     # Хеши коммитов и списки файлов агенту на старте не нужны: ему нужен пересказ по CHANGELOG.md,
@@ -628,7 +655,7 @@ def auto_run(source):
     log = open(AUTO_LOG, "a", encoding="utf-8")
     log.write(f"\n=== {time.strftime('%F %T')} автообновление: {len(fresh)} новых записей CHANGELOG, все помечены auto: ok ===\n")
     log.flush()
-    proc = subprocess.Popen(["bash", str(src / "update.sh"), "--auto"], cwd=str(src), stdin=subprocess.DEVNULL,
+    proc = subprocess.Popen(bash_cmd(src / "update.sh") + ["--auto"], cwd=str(src), stdin=subprocess.DEVNULL,
                             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     AUTO_RUN.write_text(str(proc.pid))
     AUTO_LAST.write_text(str(int(time.time())))

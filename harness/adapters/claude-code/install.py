@@ -18,8 +18,17 @@ import os
 import shutil
 import sys
 
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-CC = os.path.join(os.path.expanduser("~"), ".claude")
+CC = os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".claude")
 FILES = [  # (источник, приёмник, исполняемый)
     ("hooks/session-start.sh", "hooks/session-start.sh", True),
     ("hooks/stop-guard.sh", "hooks/stop-guard.sh", True),
@@ -134,7 +143,7 @@ def settings():
 
 
 def main():
-    if os.path.exists(os.path.join(os.path.expanduser("~"), ".config/vosmenog/harness-off")):
+    if os.path.exists(os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".config/vosmenog/harness-off")):
         same("харнесс выключен (evm off): хуки и настройки Claude Code не трогаю; evm on включит")
         return 0
     if not os.path.isdir(CC):

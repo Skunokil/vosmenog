@@ -18,7 +18,16 @@ import os
 import shutil
 import sys
 
-HOME = os.path.expanduser("~")
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+HOME = os.environ.get("HOME") or os.path.expanduser("~")
 MAP_REL = "projects/team-work/SERVER.md"
 MAP = os.path.join(HOME, MAP_REL)
 MAP_REF = "~/" + MAP_REL

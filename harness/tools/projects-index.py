@@ -31,7 +31,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOME = Path.home()
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+HOME = Path(os.environ.get("HOME") or os.path.expanduser("~"))
 ROOT_ALLOWED = {"team-work", "_archive", "INDEX.md", "CLAUDE.md", "AGENTS.md"}
 HOME_ALLOWED = {"projects", "agent-os", "bot_factory", "backups", "deploy"}
 HOME_EXTRA = HOME / ".config" / "vosmenog" / "home-allowed"  # доп. имена, по строке

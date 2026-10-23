@@ -66,7 +66,12 @@ if [ -n "$DEPLOYED" ]; then
 fi
 
 # --- Б. есть в репозитории, но не раскатано ------------------
-if git -C "$SRC" fetch --quiet origin main 2>/dev/null; then
+# fetch ограничен по времени: в корпоративной сети GitHub по SSH может встать на banner
+# exchange и не ответить никогда — порог смены (его зовёт хук Claude Code, лимит 10 с)
+# тогда висит вместо того, чтобы просто не проверить обновления.
+GIT_FETCH_TIMEOUT="${EVM_FETCH_TIMEOUT:-6}"
+if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=4" \
+   timeout "$GIT_FETCH_TIMEOUT" git -C "$SRC" fetch --quiet origin main 2>/dev/null; then
   BASE="${DEPLOYED:-HEAD}"
   N="$(git -C "$SRC" rev-list --count "$BASE..origin/main" 2>/dev/null || echo 0)"
   if [ "${N:-0}" -gt 0 ]; then

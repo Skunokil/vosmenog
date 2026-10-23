@@ -24,7 +24,16 @@ import sys
 import time
 from pathlib import Path
 
-HOME = Path.home()
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+HOME = Path(os.environ.get("HOME") or os.path.expanduser("~"))
 PROFILE = HOME / ".config/opencode/memory/user-profile.md"
 PROJECTS = HOME / ".claude/projects"
 CACHE = HOME / ".claude/cache/weekly-tokens.json"
