@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# python3-шим для MSYS bash на Windows.
+#
+# Зачем: установщики и `evm` зовут `python3`. На Windows в PATH часто оказывается
+# заглушка из Microsoft Store (WindowsApps\python3.exe) — она печатает слово «Python»
+# и выходит с кодом 49, из-за чего падает любой скрипт. Настоящий интерпретатор
+# называется python.exe и ставится через py-launcher.
+#
+# Шим живёт в ~/bin и должен быть в PATH раньше WindowsApps (обычно ~/bin уже первый).
+# Аргументы вида /c/Users/... переводятся в нативный вид: python.exe их не понимает.
+set -uo pipefail
+
+CMD=()
+if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
+  CMD=(py -3)                      # массив, не строка: иначе "-3" уедет в python.exe как опция
+else
+  found=""
+  for c in "$HOME/AppData/Local/Programs/Python"/Python3*/python.exe \
+           "/c/Program Files/Python3"*/python.exe; do
+    [ -x "$c" ] && { found="$c"; break; }
+  done
+  if [ -z "$found" ] && command -v python >/dev/null 2>&1; then
+    found="$(command -v python)"
+  fi
+  if [ -z "$found" ]; then
+    echo "python3: не найден рабочий интерпретатор Python." >&2
+    echo "  Поставьте Python 3.12+: winget install Python.Python.3.12" >&2
+    exit 1
+  fi
+  CMD=("$found")
+fi
+
+args=()
+for a in "$@"; do
+  case "$a" in
+    /*) args+=("$(cygpath -w "$a" 2>/dev/null || printf '%s' "$a")") ;;
+    *)  args+=("$a") ;;
+  esac
+done
+
+exec "${CMD[@]}" "${args[@]}"
