@@ -4,7 +4,11 @@
 set -uo pipefail
 unset VOSMENOG_PROJECT EVM_ROLE EVM_STALE_MIN   # окружение сессии не должно перекрывать фикстуру
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Windows: python3 - это НАТИВНЫЙ питон, MSYS-пути (/tmp/..., /c/...) он не понимает.
+# w() переводит путь в нативный вид; на Unix возвращает вход как есть.
+w() { cygpath -w "$1" 2>/dev/null || printf '%s' "$1"; }
 F="$(mktemp -d)"; trap 'rm -rf "$F"' EXIT
+FW="$(w "$F")"
 fail=0
 t() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  FAIL $1: ожидалось '$3', получено '$2'"; fail=1; fi; }
 
@@ -21,10 +25,10 @@ unset GIT_AUTHOR_DATE GIT_COMMITTER_DATE
 now=$(date +%s)
 MEM="$F/projects/team-work/demo/sessions/next-session.md"
 touch -d "@$((now-7200))" "$MEM"                       # память двухчасовой давности
-guard() { printf '%s' "$1" | HOME="$F" python3 "$F/agent-os/bin/evm" guard stop; }
-close() { HOME="$F" VOSMENOG_PROJECT=demo python3 "$F/agent-os/bin/evm" close demo >/dev/null; echo $?; }
+guard() { printf '%s' "$1" | HOME="$F" python3 "$FW/agent-os/bin/evm" guard stop; }
+close() { HOME="$F" VOSMENOG_PROJECT=demo python3 "$FW/agent-os/bin/evm" close demo >/dev/null; echo $?; }
 mk_start() { : > "$F/.local/state/evm/start-$1"; touch -d "@$2" "$F/.local/state/evm/start-$1"; }
-J() { echo "{\"session_id\":\"$1\",\"cwd\":\"$F/projects/demo\"${2:-}}"; }
+J() { echo "{\"session_id\":\"$1\",\"cwd\":\"$(echo "$FW/projects/demo" | sed 's/\\/\\\\/g')\"${2:-}}"; }
 
 echo "== сторож Stop"
 mk_start A $((now-3600))
@@ -54,7 +58,7 @@ after="$(cd "$F" && find . -type f ! -path './.local/*' ! -path '*/.git/*' | sor
 t "evm close ничего не пишет (хеши до/после)" "$before" "$after"
 
 echo "== evm boot: первое дело в блоке"
-boot() { HOME="$F" VOSMENOG_PROJECT=demo python3 "$F/agent-os/bin/evm" boot demo "$@"; }
+boot() { HOME="$F" VOSMENOG_PROJECT=demo python3 "$FW/agent-os/bin/evm" boot demo "$@"; }
 t "секции нет - сказано вслух" "$(boot | grep -c 'секции «Первое дело')" "1"
 long="$(python3 -c "print('\n'.join('строка %d ' % i + 'x'*40 for i in range(40)))")"
 printf '# mem\n\n## Первое дело следующей смены\n\n%s\n\n## Второе\n\nне должно попасть\n' "$long" > "$MEM"

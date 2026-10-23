@@ -5,20 +5,32 @@
 set -uo pipefail
 unset VOSMENOG_PROJECT EVM_ROLE EVM_TOOL
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Windows: python3 и git — НАТИВНЫЕ бинарники, MSYS-пути (/tmp/..., /c/...) они не понимают
+# (конверсия аргументов в этой сборке отключена). w() переводит путь в нативный вид; на Unix — no-op.
+w() { cygpath -w "$1" 2>/dev/null || printf '%s' "$1"; }
 T="$(mktemp -d)"
-case "$T" in /tmp/*|/var/tmp/*) ;; *) echo "FAIL: рабочий каталог вне /tmp: $T"; exit 2;; esac
+case "$T" in /tmp/*|/var/tmp/*|/*/Temp/*|/*/AppData/Local/Temp/*) ;; *) echo "FAIL: рабочий каталог вне /tmp: $T"; exit 2;; esac
 trap 'rm -rf "$T"' EXIT
 fail=0
 t() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  FAIL $1: ожидалось '$3', получено '$2'"; fail=1; fi; }
+# Тест не должен ходить в сеть: update-check делает `git fetch origin main`, а боевой origin
+# это SSH к GitHub — без ключей тест встаёт на 20-секундном ожидании. Даём сторожу рабочую
+# копию репозитория, чей origin — локальный bare-клон: сеть не нужна, поведение то же.
+git clone -q --bare "$(w "$SRC")" "$(w "$T/origin.git")"
+git clone -q "$(w "$T/origin.git")" "$(w "$T/work")"
+git -C "$(w "$T/work")" remote set-url origin "$(w "$T/origin.git")"
 
 H="$T/h"; mkdir -p "$H/.claude" "$H/agent-os/bin" "$H/.config/opencode/memory"
+# Windows: python3 и git — НАТИВНЫЕ бинарники, MSYS-пути они не понимают (конверсия
+# аргументов в этой сборке отключена). w() переводит путь в нативный вид; на Unix — no-op.
+w() { cygpath -w "$1" 2>/dev/null || printf '%s' "$1"; }
 cp "$SRC/harness/tools/evm" "$SRC/harness/tools/evm-threshold" "$SRC/harness/tools/projects-index.py" "$H/agent-os/bin/"; chmod +x "$H/agent-os/bin/"*
 cp "$SRC/harness/update-check.sh" "$H/.config/opencode/memory/"
 echo "# cc" > "$H/.claude/CLAUDE.md"
 mkdir -p "$H/projects/team-work/infra/sessions" && echo "первое дело: проверить" > "$H/projects/team-work/infra/sessions/next-session.md"   # проект без кода для evm boot
-printf '%s\n' "$SRC" > "$H/.config/opencode/.vosmenog-source"
-EVM() { HOME="$H" python3 "$H/agent-os/bin/evm" "$@"; }
-connect() { HOME="$H" python3 "$SRC/harness/connect-server-map.py"; HOME="$H" python3 "$SRC/harness/adapters/claude-code/install.py"; }
+printf '%s\n' "$(w "$T/work")" > "$H/.config/opencode/.vosmenog-source"
+EVM() { HOME="$H" python3 "$(w "$H/agent-os/bin/evm")" "$@"; }
+connect() { HOME="$H" python3 "$(w "$SRC/harness/connect-server-map.py")"; HOME="$H" python3 "$(w "$SRC/harness/adapters/claude-code/install.py")"; }
 connect >/dev/null 2>&1
 SETTINGS="$H/.claude/settings.json"; CLAUDEMD="$H/.claude/CLAUDE.md"; FLAG="$H/.config/vosmenog/harness-off"
 has_hooks() { grep -c 'session-start.sh\|stop-guard.sh' "$SETTINGS" 2>/dev/null | tr -d ' '; }
@@ -65,13 +77,13 @@ echo "== установщик заменяет прежние версии ху�
 for c in old edited; do
   CH="$T/up-$c"; mkdir -p "$CH/.claude/hooks"
   if [ "$c" = old ]; then
-    git -C "$SRC" show f8db652:harness/adapters/claude-code/hooks/session-start.sh > "$CH/.claude/hooks/session-start.sh"
-    git -C "$SRC" show e679046:harness/adapters/claude-code/hooks/stop-guard.sh > "$CH/.claude/hooks/stop-guard.sh"
+    git -C "$(w "$SRC")" show f8db652:harness/adapters/claude-code/hooks/session-start.sh > "$CH/.claude/hooks/session-start.sh"
+    git -C "$(w "$SRC")" show e679046:harness/adapters/claude-code/hooks/stop-guard.sh > "$CH/.claude/hooks/stop-guard.sh"
   else
     printf '#!/bin/bash\n# моя правка\n' > "$CH/.claude/hooks/session-start.sh"
     printf '#!/bin/bash\n# моя правка\n' > "$CH/.claude/hooks/stop-guard.sh"
   fi
-  HOME="$CH" python3 "$SRC/harness/adapters/claude-code/install.py" >/dev/null 2>&1
+  HOME="$CH" python3 "$(w "$SRC/harness/adapters/claude-code/install.py")" >/dev/null 2>&1
 done
 t "session-start.sh: прежняя версия заменена (есть проверка флага)" "$(grep -c 'harness-off' "$T/up-old/.claude/hooks/session-start.sh")" "1"
 t "stop-guard.sh: прежняя версия заменена" "$(grep -c 'harness-off' "$T/up-old/.claude/hooks/stop-guard.sh")" "1"

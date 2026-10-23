@@ -4,6 +4,15 @@
 Отказывается работать с путём вне /tmp: это защита от случая, когда тест правит настоящий репозиторий."""
 import sys
 
+# --- windows: utf-8 stdout ---
+# На Windows кодировка консоли — cp1252/cp866, и печать «✓» или русского текста
+# падает с UnicodeEncodeError. Переводим вывод в utf-8 (с заменой непечатаемого).
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 mode, path = sys.argv[1], sys.argv[2]
 uniq = sys.argv[3] if len(sys.argv) > 3 else "0"   # уникальный заголовок: сценарии делят один origin
 if not (path.startswith("/tmp/") or path.startswith("/var/tmp/")):
