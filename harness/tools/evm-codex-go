@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -gt 1 || ( $# -eq 1 && $1 != --install ) ]]; then
+  printf 'Использование: %s [--install]\n' "${0##*/}" >&2
+  exit 2
+fi
+if [[ $(id -u) == 0 ]]; then
+  printf 'Запускайте Codex от рабочего пользователя.\n' >&2
+  exit 1
+fi
+if ! command -v codex >/dev/null; then
+  printf 'Codex CLI не найден в PATH.\n' >&2
+  exit 1
+fi
+
+rules_dir=${CODEX_HOME:-$HOME/.codex}/rules
+rules_file=$rules_dir/evm-privileged.rules
+mkdir -p -- "$rules_dir"
+candidate=$(mktemp "$rules_dir/.evm-privileged.XXXXXX")
+trap 'rm -f -- "$candidate"' EXIT
+cat > "$candidate" <<'RULES'
+prefix_rule(
+    pattern = [["sudo", "/usr/bin/sudo", "/bin/sudo", "sudoedit", "/usr/bin/sudoedit", "/bin/sudoedit", "su", "/usr/bin/su", "/bin/su", "doas", "/usr/bin/doas", "/bin/doas", "pkexec", "/usr/bin/pkexec", "/bin/pkexec"]],
+    decision = "prompt",
+    justification = "ЭВМ: владелец подтверждает эту привилегированную команду один раз.",
+    match = ["sudo -n systemctl restart example.service", "/usr/bin/sudo -n true", "sudoedit /etc/example.conf"],
+    not_match = ["systemctl is-active example.service"],
+)
+RULES
+
+if ! ln -- "$candidate" "$rules_file" 2>/dev/null && ! cmp -s -- "$candidate" "$rules_file"; then
+  printf 'Правило не установлено. Проверьте %s. Существующий файл сохранён.\n' "$rules_file" >&2
+  exit 1
+fi
+rm -f -- "$candidate"
+trap - EXIT
+
+if [[ ${1:-} == --install ]]; then
+  printf 'Правило установлено: %s\n' "$rules_file"
+  exec codex execpolicy check --pretty --rules "$rules_file" -- sudo -n true
+fi
+
+exec codex --sandbox read-only --ask-for-approval on-request -c 'approvals_reviewer="user"'

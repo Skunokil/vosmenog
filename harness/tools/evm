@@ -425,6 +425,7 @@ def close(key):
         row(not stray, "рабочие ветки сняты или лежат в .worktrees/" if not stray
             else "worktree не на месте: " + ", ".join(stray), warn=True)
     out.append(" ? лист приёмки эпика закрыт - проверь вручную: каждая находка помечена (исправлено / backlog / отложено)")
+    out.append(" ? очередь сверена - назови следующее действие, исполнителя, проверку и нужный GO или зафиксируй завершение")
     print("\n".join(out))
     return 1 if bad else 0
 
