@@ -300,6 +300,93 @@ def update_notice():
             + ["  " + ln for ln in lines[:14]])
 
 
+# ---------- актуальность исходников ----------
+
+GIT_SOURCE_TIMEOUT = 4
+
+
+def git_source_state(code, workdir=None):
+    """Сверить рабочую копию с origin основной ветки без fetch и записи файлов."""
+    environment = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0")
+    environment.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=3")
+
+    def read(repo, *args):
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL, env=environment,
+                              timeout=GIT_SOURCE_TIMEOUT)
+
+    state = {"status": "unknown", "blocked": True, "branch": "?", "repo": str(code),
+             "local_sha": "?", "remote_sha": "?", "dirty": 0, "ahead": 0, "behind": 0}
+    try:
+        common = read(code, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        if common.returncode:
+            return None  # Планирование и каталоги без Git не имеют удалённой базы.
+        # Первая запись worktree — главный каталог. Его ветка задаёт базу проекта.
+        listing = read(code, "worktree", "list", "--porcelain")
+        primary = listing.stdout.split("\n\n", 1)[0]
+        branch = re.search(r"(?m)^branch refs/heads/(.+)$", primary)
+        if not branch:
+            state["reason"] = "у главного каталога нет основной ветки"
+            return state
+        state["branch"] = branch.group(1)
+        candidate = Path(workdir) if workdir is not None else Path.cwd()
+        current = read(candidate, "rev-parse", "--path-format=absolute", "--git-common-dir")
+        repo = candidate if current.returncode == 0 and current.stdout.strip() == common.stdout.strip() else code
+        state["repo"] = str(Path(repo).resolve())
+        head = read(repo, "rev-parse", "HEAD")
+        if head.returncode:
+            state["reason"] = "в рабочей копии нет коммита HEAD"
+            return state
+        state["local_sha"] = head.stdout.strip()
+        dirty = read(repo, "status", "--porcelain", "--untracked-files=normal")
+        if dirty.returncode:
+            state["reason"] = "не удалось проверить незакоммиченные изменения"
+            return state
+        state["dirty"] = len(dirty.stdout.splitlines())
+        if "origin" not in read(code, "remote").stdout.splitlines():
+            state["reason"] = "origin не настроен"
+            return state
+        remote = read(repo, "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/" + state["branch"])
+        if remote.returncode:
+            state["reason"] = "удалённая ветка недоступна; актуальность не подтверждена"
+            return state
+        lines = remote.stdout.strip().splitlines()
+        if len(lines) != 1 or not re.fullmatch(r"[0-9a-f]{40,64}\s+refs/heads/" + re.escape(state["branch"]), lines[0]):
+            state["reason"] = "не удалось однозначно определить удалённый SHA"
+            return state
+        state["remote_sha"] = lines[0].split()[0]
+        if state["local_sha"] == state["remote_sha"]:
+            state.update(status="current", blocked=False)
+            return state
+        graph = read(repo, "rev-list", "--left-right", "--count", state["local_sha"] + "..." + state["remote_sha"])
+        if graph.returncode:
+            state["reason"] = "удалённый SHA изменился; сначала получить Git-объекты и выбрать актуальную базу"
+            return state
+        ahead, behind = map(int, graph.stdout.split())
+        state.update(ahead=ahead, behind=behind)
+        state["status"] = "diverged" if ahead and behind else ("behind" if behind else "ahead")
+        state["blocked"] = bool(behind)
+        return state
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        state["reason"] = "сверка не завершена за ограниченное время; актуальность не подтверждена"
+        return state
+
+
+def git_source_lines(state):
+    """Короткий результат сверки для полного и краткого старта."""
+    if state is None:
+        return []
+    labels = {"current": "актуальна", "ahead": "содержит дополнительные коммиты",
+              "behind": "отстаёт", "diverged": "история разошлась", "unknown": "не проверена"}
+    lines = [f"Git — источник: origin/{state['branch']} {state['remote_sha']}; локальный HEAD {state['local_sha']}",
+             f" Копия {labels[state['status']]}; впереди {state['ahead']}, позади {state['behind']}, незакоммиченных {state['dirty']}."]
+    if state.get("reason"):
+        lines.append(" " + state["reason"])
+    if state["blocked"]:
+        lines.append(" СТОП: до изменяющей работы подтвердить актуальную Git-базу; чужие правки сохранить, новую работу вести через worktree.")
+    return lines
+
+
 # ---------- boot ----------
 
 def boot(key, role, brief):
@@ -318,6 +405,8 @@ def boot(key, role, brief):
         return 1
     shown = plan.name if plan else (code.name if code else key)
     L = [f"== evm boot: {shown} · роль: {role}{' · кратко' if brief else ''} =="]
+    source_state = git_source_state(code) if code else None
+    L.extend(git_source_lines(source_state))
     ns = (plan / "sessions/next-session.md") if plan else None
     epic_line = None
     if plan and ns and ns.is_file():
@@ -363,7 +452,7 @@ def boot(key, role, brief):
     cap = BRIEF_BUDGET if brief else BUDGET
     if len(text) > cap:
         print(f"\n(! вывод {len(text)} зн. при бюджете {cap})", file=sys.stderr)
-    return 0
+    return 1 if source_state and source_state["blocked"] else 0
 
 
 # ---------- close ----------
