@@ -1,0 +1,32 @@
+name: EVM D0.4 checks
+on:
+  push:
+    branches:
+      - 'evm2/**'
+  pull_request:
+    paths:
+      - 'harness/**'
+      - 'evm2/**'
+      - 'tests/**'
+      - 'setup.sh'
+      - 'update.sh'
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python syntax
+        run: python3 -m compileall -q tests harness/tools harness/adapters/claude-code/install.py
+      - name: Session and catalog tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_evm_docs.py' -v
+          python3 -m unittest discover -s tests -p 'test_evm_session_hooks.py' -v
+      - name: Shell and boundary checks
+        run: |
+          bash -n setup.sh update.sh
+          bash check-boundary.sh

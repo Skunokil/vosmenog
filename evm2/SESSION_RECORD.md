@@ -1,6 +1,6 @@
 # EVM 2.0 — Session Record & Behavior Observability (D0.4)
 
-> **Статус:** документальный контракт. Универсальные hooks, телеметрия и Composer ещё не реализованы. Для software-харнесса: [шаблон](../harness/session-record.template.md) и [STARTUP](../harness/STARTUP.md).
+> **Статус:** документальный контракт и opt-in хуки для некоторых CLI-сред. Полная автоматическая телеметрия, Composer и универсальный runtime-контроль ещё не реализованы. Для software-харнесса: [шаблон](../harness/session-record.template.md) и [STARTUP](../harness/STARTUP.md).
 
 ## Обязательство
 
@@ -41,6 +41,10 @@
 | `cause` / `confidence` | `verified`, `hypothesis` или `unknown` |
 
 Типовые события: `goal.accepted`, `strategy.selected`, `gate.triggered`, `approval.requested`, `action.completed`, `outcome.checked`, `handoff.created`. Не собирай каждый токен и каждый вызов. Самоотчёт агента не превращается в runtime observation от красивого оформления; источник пользовательского сообщения и независимость проверки отмечай явно.
+
+## Инструментальный след и его пределы
+
+В software-харнессе появился [опциональный адаптер lifecycle hooks](../harness/adapters/SESSION_HOOKS.md). Он может идемпотентно открыть пустую сессионную запись до квалификации работы и сохранять только технические метаданные о вызванных инструментах. Эти данные находятся в закрытом user-state, вне Git. Hook не знает смысла решения пользователя и не подтверждает успех инструмента. Аргументы команд, ответы, транскрипты и секреты не сохраняются.
 
 ## Обеспечение поведения
 

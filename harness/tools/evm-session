@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""EVM session hook adapter: safe session open and metadata-only trace.
+
+This is a NUDGE/OBSERVATION mechanism, NOT an approval or OS security gate.
+Never read transcript, tool_input, tool_response, secrets, or arbitrary file contents.
+"""
+import argparse
+import datetime as dt
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import sys
+
+ROOT = Path(__file__).resolve().parent
+LOADER = importlib.machinery.SourceFileLoader("_evm_docs", str(ROOT / "evm-docs"))
+SPEC = importlib.util.spec_from_loader("_evm_docs", LOADER)
+DOCS = importlib.util.module_from_spec(SPEC)
+LOADER.exec_module(DOCS)
+
+SOURCE = {"claude-code", "codex-generic"}
+EVENTS = {"tool.returned", "tool.failed", "session.ended"}
+TOOL_CLASSES = {"Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep",
+                "Task", "WebFetch", "NotebookEdit", "apply_patch", "other"}
+EXTERNAL = re.compile(r"[A-Za-z0-9_.:-]{1,160}\Z")
+MAX_TRACE = 2 * 1024 * 1024
+
+
+def signature(project, source, external_id):
+    if source not in SOURCE or not isinstance(external_id, str) or not EXTERNAL.fullmatch(external_id):
+        raise ValueError("Invalid source/session ID")
+    material = "\0".join(("evm-hook-v1", project, source, external_id))
+    return "D-" + hashlib.sha256(material.encode()).hexdigest()[:24]
+
+
+def native_exists(plan, project, external_id):
+    key = hashlib.sha256((project + "\0" + external_id).encode()).hexdigest()[:32]
+    note = plan / "sessions/work" / (key + ".json")
+    return note.exists() or note.is_symlink()
+
+
+def locate(catalog, uid):
+    hits = [x for x in catalog["entries"] if x["uid"] == uid]
+    if not hits:
+        return None
+    if len(hits) != 1 or hits[0]["kind"] != "SESSION" or hits[0]["source"] != "markdown":
+        raise ValueError("Session UID conflict")
+    return hits[0]
+
+
+def allowed_inventory(plan, project):
+    catalog = DOCS.inventory(plan, project)
+    if any(p["severity"] == "error" for p in catalog["problems"]):
+        raise ValueError("Document registry contains errors")
+    return catalog
+
+
+def ensure(plan, project, source, external_id):
+    uid = signature(project, source, external_id)
+    if source == "codex-generic" and native_exists(plan, project, external_id):
+        return {"status": "NATIVE_SESSION_OWNED", "uid": None, "path": None,
+                "meaning": "Existing native JSON note is authoritative"}
+    lock = DOCS.lock(plan)
+    try:
+        catalog = allowed_inventory(plan, project)
+        prior = locate(catalog, uid)
+        if prior:
+            return {"status": "RESUMED" if "/active/" in "/" + prior["path"] else "ALREADY_ARCHIVED",
+                    "uid": uid, "path": str(plan / prior["path"])}
+        active = plan / "sessions/active"
+        if active.is_symlink():
+            raise ValueError("Active folder symlink")
+        active.mkdir(mode=0o700, exist_ok=True)
+        template = DOCS.safe_file(ROOT.parent / "session-record.template.md").read_text(encoding="utf-8")
+        for _ in range(12):
+            code = "S-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(6)
+            filename = active / (code + ".md")
+            if not filename.exists() and not filename.is_symlink():
+                break
+        else:
+            raise ValueError("Unable to reserve unique session name")
+        data = {"schema": 1, "uid": uid, "project": project, "kind": "SESSION",
+                "code": code, "status": "active", "classification": "undecided",
+                "route_history": [], "work_refs": []}
+        header = "<!-- evm-doc: " + json.dumps(data, separators=(",", ":"), ensure_ascii=False) + " -->\n"
+        body = template.replace("S-YYYYMMDDThhmmssZ-<12hex>", code).replace("YYYY-MM-DD_N", code)
+        body = body.replace("<выданные генератором, не угадывать>",
+                            project + " / " + uid + " / " + code)
+        body = body.replace("<проект>", project)
+        payload = header + body
+        fd = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            out.write(payload)
+            out.flush()
+            os.fsync(out.fileno())
+        try:
+            DOCS.refresh_catalog(plan, project)
+            status = "CREATED"
+        except (ValueError, OSError):
+            status = "CREATED_INDEX_PENDING"
+        return {"status": status, "uid": uid, "path": str(filename)}
+    finally:
+        os.close(lock)
+
+
+def trace_path(project, uid):
+    home = Path(os.environ.get("HOME", str(Path.home())))
+    current = home
+    for part in (".local", "state", "evm", "traces", project):
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Trace path symlink refused")
+        current.mkdir(mode=0o700, exist_ok=True)
+        if not current.is_dir():
+            raise ValueError("Invalid trace directory")
+    return current / (uid + ".jsonl")
+
+
+def observe(plan, project, source, external_id, event, tool):
+    if event not in EVENTS:
+        raise ValueError("Unknown hook event")
+    uid = signature(project, source, external_id)
+    if source == "codex-generic" and native_exists(plan, project, external_id):
+        return {"status": "NATIVE_SESSION_OWNED"}
+    catalog = allowed_inventory(plan, project)
+    note = locate(catalog, uid)
+    if not note:
+        return {"status": "NO_SESSION_RECORD", "meaning": "No trace written"}
+    tool_class = tool if tool in TOOL_CLASSES else "other"
+    if event == "session.ended":
+        tool_class = "none"
+    path = trace_path(project, uid)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("Unsafe trace file")
+        import fcntl
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        if os.fstat(fd).st_size > MAX_TRACE:
+            return {"status": "TRACE_FULL", "meaning": "No event appended"}
+        os.lseek(fd, 0, os.SEEK_SET)
+        content = os.read(fd, MAX_TRACE + 1)
+        count = content.count(b"\n")
+        if len(content) > MAX_TRACE or count >= 10000:
+            return {"status": "TRACE_FULL", "meaning": "No event appended"}
+        record = {"event_id": "E" + str(count + 1).zfill(5),
+                  "time": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                  "source": "runtime_observed", "event": event, "tool_class": tool_class,
+                  "outcome": "not_verified"}
+        blob = (json.dumps(record, separators=(",", ":"), ensure_ascii=False) + "\n").encode()
+        os.write(fd, blob)
+        os.fsync(fd)
+        return {"status": "RECORDED", "uid": uid, "event_id": record["event_id"],
+                "trace": str(path)}
+    finally:
+        os.close(fd)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--planning", required=True)
+    p.add_argument("--project", required=True)
+    p.add_argument("--source", choices=sorted(SOURCE), required=True)
+    p.add_argument("--external-id", required=True)
+    sub = p.add_subparsers(dest="action", required=True)
+    sub.add_parser("ensure")
+    o = sub.add_parser("observe")
+    o.add_argument("--event", choices=sorted(EVENTS), required=True)
+    o.add_argument("--tool", default="other")
+    args = p.parse_args()
+    try:
+        plan = DOCS.checked_dir(args.planning)
+        if not DOCS.PROJECT.fullmatch(args.project):
+            raise ValueError("Invalid project key")
+        if args.action == "ensure":
+            result = ensure(plan, args.project, args.source, args.external_id)
+        else:
+            result = observe(plan, args.project, args.source, args.external_id,
+                             args.event, args.tool)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["status"] not in {"CREATED_INDEX_PENDING", "TRACE_FULL"} else 3
+    except (ValueError, OSError, TypeError, KeyError):
+        print(json.dumps({"status": "UNAVAILABLE", "meaning": "Safe session hook did not write"}))
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

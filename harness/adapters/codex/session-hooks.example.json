@@ -1,0 +1,38 @@
+{
+  "description": "Opt-in EVM Session Record & metadata-only observations; do not overwrite native agent hooks.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook start --source codex-generic",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook tool --source codex-generic",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook end --source codex-generic",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

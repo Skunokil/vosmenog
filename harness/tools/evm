@@ -668,6 +668,8 @@ def cmd_status():
         has = lambda ev, needle: any(needle in str(h.get("command", "")) for e in hooks.get(ev, []) for h in e.get("hooks", []))
         print(f"Хуки Claude Code в settings.json: старт сессии {'есть' if has('SessionStart', 'session-start.sh') else 'нет'}, "
               f"сторож памяти {'есть' if has('Stop', 'stop-guard.sh') else 'нет'}"
+              f"; Session Record {'подключён' if has('SessionStart', 'evm hook start') else 'не подключён'}"
+              f"; инструментальный след {'подключён' if has('PostToolUse', 'evm hook tool') else 'не подключён'}"
               + ("; disableAllHooks=true - Claude Code их не запускает" if conf.get("disableAllHooks") else ""))
     except (OSError, ValueError):
         print("Хуки Claude Code: ~/.claude/settings.json не найден или не читается")
