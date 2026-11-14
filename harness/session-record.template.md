@@ -1,6 +1,6 @@
 # YYYY-MM-DD_N — <рабочая сессия>
 
-> **Session Record D0.4.** Активная запись: `sessions/active/YYYY-MM-DD_N_session.md`; закрытая: `sessions/archive/YYYY-MM-DD_N_session.md`. [Контракт](../evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
+> **Session Record D0.4.** В проекте: `sessions/active/YYYY-MM-DD_N_session.md` → `sessions/archive/YYYY-MM-DD_N_session.md`; в общей памяти: `~/.config/opencode/memory/active/` → `~/.config/opencode/memory/archive/`. [Контракт](../evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
 
 ## 1. Паспорт
 - **session_id:** <проект/YYYY-MM-DD_N>

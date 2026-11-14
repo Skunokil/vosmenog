@@ -85,8 +85,8 @@ mkdir -p "$AGENT_OS" "$MEMORY"
 # не копируем». Она была верна, пока установка была git-клоном. После снятия
 # .git (2026-09-09) симлинк стал указывать на замороженный payload, и файл
 # переставал обновляться молча. Установка копий не боится: она никуда не пушится.
-DOCS="METHOD.md BOOT.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
-[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+DOCS="METHOD.md BOOT.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md session-record.template.md"
+[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md GUIDE.md README.md INSTALL_PROMPT.md FOREIGN_AGENTS.md CLAUDE_CODE_MINOTAUR.md AGENTS_INSTALL.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md session-record.template.md"
 for f in $DOCS; do
   SRC_F=""
   for d in "$HARNESS" "$VOS" "$SCRIPT_DIR"; do [ -f "$d/$f" ] && { SRC_F="$d/$f"; break; }; done   # часть доков лежит в корне репо
@@ -133,6 +133,7 @@ if [ -d "$HARNESS/method" ]; then
 fi
 cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (протокол)"
 cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
+cp "$HARNESS/session-record.template.md" "$MEMORY/session-record.template.md"; ok "memory/session-record.template.md (шаблон сессии)"
 
 # 2a. глобальный слот инструкций opencode.
 #     opencode берёт первый существующий из [<config>/AGENTS.md, ~/.claude/CLAUDE.md]:

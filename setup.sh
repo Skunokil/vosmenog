@@ -51,8 +51,8 @@ ok "$AGENT_OS, $MEMORY"
 
 # --- 2. Раскладка дистрибутива ----------------------------------
 say "Раскладка файлов фреймворка"
-DOCS="METHOD.md BOOT.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
-[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md"
+DOCS="METHOD.md BOOT.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md session-record.template.md"
+[ "$HARNESS_ONLY" = "1" ] || DOCS="METHOD.md BOOT.md ONBOARDING.md EPIC.template.md TASK.template.md BUG.template.md project-slots.template.md ROADMAP.template.md session-record.template.md"
 for f in $DOCS; do
   SRC_F=""
   for d in "$HARNESS" "$VOS"; do [ -f "$d/$f" ] && { SRC_F="$d/$f"; break; }; done
@@ -143,6 +143,7 @@ if [ -d "$HARNESS/method" ]; then
 fi
 cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
+cp "$HARNESS/session-record.template.md" "$MEMORY/session-record.template.md"; ok "memory/session-record.template.md"
 [ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
 cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
 cp "$HARNESS/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений: раньше его ставил только update.sh, и новый пользователь не получал уведомлений)"
