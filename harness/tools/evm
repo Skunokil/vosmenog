@@ -859,11 +859,17 @@ def session_hook(event, source):
                               stdin=subprocess.DEVNULL, timeout=8)
         if event == "start":
             status = json.loads(done.stdout) if done.stdout else {}
-            if done.returncode == 0 and status.get("status") in {"CREATED", "RESUMED", "ALREADY_ARCHIVED"}:
+            if status.get("status") in {"CREATED", "RESUMED"} and done.returncode == 0:
                 print("EVM Session Record: " + status["path"] + " (" + status["status"] + ").")
                 print("Begin with original intent and uncertainties; EPIC/TASK classification may come later.")
                 print("Trace is metadata-only; capture semantic decisions and evidence in the Session Record.")
-            elif done.returncode == 0 and status.get("status") == "NATIVE_SESSION_OWNED":
+            elif status.get("status") == "CREATED_INDEX_PENDING" and status.get("path"):
+                print("EVM Session Record CREATED: " + status["path"] +
+                      ". Catalog refresh is pending; rebuild index, never recreate the document.")
+            elif status.get("status") == "ALREADY_ARCHIVED" and done.returncode == 0:
+                print("EVM Session Record is already archived: " + status["path"] +
+                      ". Do not reopen or overwrite it; start a new logical session if needed.")
+            elif status.get("status") == "NATIVE_SESSION_OWNED" and done.returncode == 0:
                 print("EVM native JSON session is authoritative; do not create duplicate Markdown.")
             else:
                 print("EVM Session Record: not_saved; keep a portable in-chat record.")
