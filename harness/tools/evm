@@ -411,7 +411,11 @@ def boot(key, role, brief):
     epic_line = None
     if plan and ns and ns.is_file():
         # Do not choose sorted(...)[0] for an ambiguous human EPIC code.
-        m = re.search(r"(?<![A-Z0-9])EPIC-(\d+)(?!\d)", ns.read_text(encoding="utf-8", errors="replace"))
+        hot = ns.read_text(encoding="utf-8", errors="replace")
+        # Only the "first task" section can identify the active EPIC.
+        # Other open EPICs later in hot memory must never be guessed as current.
+        first = re.search(r"(?ms)^## Первое дело[^\n]*\n(.*?)(?=^## |\Z)", hot)
+        m = re.search(r"(?<![A-Z0-9])EPIC-(\d+)(?!\d)", first.group(1)) if first else None
         if m:
             human_code = "EPIC-" + m.group(1)
             rx = re.compile(re.escape(human_code) + r"(?:-.+)?\.md\Z")
@@ -516,6 +520,22 @@ def close(key):
                 else f"строка журнала длиннее {JOURNAL_LINE_MAX} знаков ({len(long_[-1])})")
     else:
         row(False, f"журнала нет: {tilde(jr)}")
+    # Catalog freshness is diagnostic: the local docs inventory cannot invent an owner GO.
+    catalog = plan / "sessions/_catalog.json"
+    docs_tool = HERE / "evm-docs"
+    if catalog.is_file() and docs_tool.is_file():
+        try:
+            checked = subprocess.run([sys.executable, str(docs_tool), "--planning",
+                                      str(plan), "--project", plan.name, "check"],
+                                     capture_output=True, timeout=10)
+            if checked.returncode == 0:
+                row(True, "каталог документов синхронизирован")
+            else:
+                row(False, "каталог документов требует проверки или пересборки (evm-docs index)", warn=True)
+        except (OSError, subprocess.TimeoutExpired):
+            row(False, "индексатор документов недоступен", warn=True)
+    elif not catalog.exists():
+        out.append(" ? каталог документов пока не создан: evm-docs --planning <путь> --project <ключ> index")
     if w["dirty"]:
         row(False, f"незакоммиченных правок в проекте и планировании: {w['dirty']} - свои закоммить, чужие не трогай", warn=True)
     else:
