@@ -805,6 +805,74 @@ def auto_status():
     return 0
 
 
+
+# ---------- optional Session Record lifecycle hooks ----------
+
+def session_hook(event, source):
+    """No permission grants. Only metadata is passed to the record/trace writer."""
+    if harness_off():
+        return 0
+    try:
+        raw = sys.stdin.buffer.read(128001)
+        if len(raw) > 128000:
+            raise ValueError("Oversize hook input")
+        data = json.loads(raw)
+        if not isinstance(data, dict) or data.get("agent_id"):
+            return 0
+        expected = {"start": "SessionStart", "tool": "PostToolUse",
+                    "tool-failure": "PostToolUseFailure", "end": "SessionEnd"}[event]
+        if data.get("hook_event_name") != expected:
+            raise ValueError("Hook event mismatch")
+        sid = data.get("session_id")
+        cwd = data.get("cwd")
+        if (not isinstance(sid, str) or not 1 <= len(sid) <= 160
+                or not isinstance(cwd, str) or not cwd.startswith("/")
+                or len(cwd) > 2048):
+            raise ValueError("Invalid session context")
+        key = infer_project(cwd)
+        if key:
+            _, plan, err = resolve(key)
+            if err or plan is None:
+                raise ValueError("Planning root unavailable")
+            project = key
+        else:
+            project, plan = "personal", HOME / ".config/opencode/memory"
+        hook = HERE / "evm-session"
+        if not hook.is_file() or not plan.is_dir():
+            raise ValueError("Hook adapter unavailable")
+        args = [sys.executable, str(hook), "--planning", str(plan),
+                "--project", project, "--source", source,
+                "--external-id", sid]
+        if event == "start":
+            args.append("ensure")
+        else:
+            args += ["observe", "--event", {
+                "tool": "tool.returned", "tool-failure": "tool.failed",
+                "end": "session.ended"}[event]]
+            if event != "end":
+                name = data.get("tool_name")
+                classes = {"Bash", "Read", "Write", "Edit", "MultiEdit",
+                           "Glob", "Grep", "Task", "WebFetch", "NotebookEdit",
+                           "apply_patch"}
+                args += ["--tool", name if isinstance(name, str) and name in classes else "other"]
+        done = subprocess.run(args, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, timeout=8)
+        if event == "start":
+            status = json.loads(done.stdout) if done.stdout else {}
+            if done.returncode == 0 and status.get("status") in {"CREATED", "RESUMED", "ALREADY_ARCHIVED"}:
+                print("EVM Session Record: " + status["path"] + " (" + status["status"] + ").")
+                print("Begin with original intent and uncertainties; EPIC/TASK classification may come later.")
+                print("Trace is metadata-only; capture semantic decisions and evidence in the Session Record.")
+            elif done.returncode == 0 and status.get("status") == "NATIVE_SESSION_OWNED":
+                print("EVM native JSON session is authoritative; do not create duplicate Markdown.")
+            else:
+                print("EVM Session Record: not_saved; keep a portable in-chat record.")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        if event == "start":
+            print("EVM Session Record: not_saved (hook check failed); use an in-chat record.")
+    return 0
+
+
 # ---------- main ----------
 
 def main():
@@ -820,6 +888,9 @@ def main():
     c.add_argument("project", nargs="?")
     g = sub.add_parser("guard", help="сторожа для хуков")
     g.add_argument("what", choices=["stop"])
+    hk = sub.add_parser("hook", help="opt-in session lifecycle/metadata trace")
+    hk.add_argument("event", choices=["start", "tool", "tool-failure", "end"])
+    hk.add_argument("--source", choices=["claude-code", "codex-generic"], required=True)
     sub.add_parser("off", help="выключить харнесс постоянно")
     sub.add_parser("on", help="включить харнесс обратно")
     sub.add_parser("status", help="состояние харнесса, автообновления, хуков")
@@ -836,6 +907,8 @@ def main():
         return close(a.project)
     if a.cmd == "guard":
         return guard_stop()
+    if a.cmd == "hook":
+        return session_hook(a.event, a.source)
     if a.cmd == "off":
         return cmd_off()
     if a.cmd == "on":
