@@ -4,8 +4,10 @@
 
 ## 2026-11-14 — D0.4: Session Record и ретро из событий
 
-Добавлен документальный контракт наблюдаемости поведения, шаблон рабочей
-сессии и доказательная база для RESOLVE EPIC: `keep / change / experiment`.
+Добавлен контракт наблюдаемости: Session Record создаётся до квалификации
+EPIC/TASK и может завершиться без эпика. В индексе отображается маршрут:
+`undecided → epic/task/bug/backlog/research/one_off/no_epic` (или `mixed`).
+Шаблон рабочей сессии и доказательная база для RESOLVE EPIC: `keep / change / experiment`.
 В простом чате достаточно переносимой записи; если не сохранено — `not_saved`.
 Добавлены правила `DOCUMENT_REGISTRY.md`, индексатор `evm-docs` и защита
 `evm boot` от неоднозначных кодов. Existing native JSON note engine остаётся

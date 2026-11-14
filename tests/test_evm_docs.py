@@ -127,5 +127,74 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len(list((self.plan / "sessions/active").glob("*.md"))), 6)
 
 
+    def test_session_exists_before_any_epic(self):
+        for p in (self.plan / "epics").glob("*.md"):
+            p.unlink()
+        session = self.parsed("new-session")
+        self.assertTrue(session["uid"].startswith("D-"))
+        self.assertFalse(list((self.plan / "epics").glob("*.md")))
+        path = Path(session["path"])
+        first = json.loads(path.read_text().splitlines()[0].removeprefix("<!-- evm-doc: ").removesuffix(" -->"))
+        self.assertEqual(first["classification"], "undecided")
+        self.assertEqual(first["work_refs"], [])
+        self.assertEqual(first["route_history"], [])
+        self.assertIn("Исходное намерение", path.read_text())
+        self.assertEqual(self.parsed("check")["status"], "PASS")
+        route = self.parsed("route", "--session-uid", session["uid"], "--kind", "no_epic")
+        self.assertEqual(route["classification"], "no_epic")
+        self.assertEqual(route["work_refs"], [])
+        self.assertEqual(self.parsed("check")["status"], "PASS")
+
+    def test_route_later_links_a_new_epic_without_changing_session_identity(self):
+        session = self.parsed("new-session")
+        session_path = Path(session["path"])
+        original = session_path.read_text().partition("\n")[2]
+        epic = self.parsed("new-work", "--kind", "EPIC", "--slug", "new-intent")
+        work_path = Path(epic["path"]).relative_to(self.plan).as_posix()
+        linked = self.parsed("route", "--session-uid", session["uid"], "--kind", "epic",
+                             "--work-path", work_path)
+        self.assertEqual(linked["classification"], "epic")
+        self.assertEqual(linked["work_refs"], [epic["uid"]])
+        self.assertEqual(original, session_path.read_text().partition("\n")[2])
+        first = json.loads(session_path.read_text().splitlines()[0][14:-4])
+        self.assertEqual(first["uid"], session["uid"])
+        self.assertEqual(first["route_history"][0]["kind"], "epic")
+        self.assertEqual(self.parsed("check")["status"], "PASS")
+
+    def test_session_can_route_to_more_than_one_work_document(self):
+        session = self.parsed("new-session")
+        epic = self.parsed("new-work", "--kind", "EPIC", "--slug", "problem")
+        ep = Path(epic["path"]).relative_to(self.plan).as_posix()
+        self.parsed("route", "--session-uid", session["uid"], "--kind", "epic", "--work-path", ep)
+        bug = self.parsed("new-work", "--kind", "BUG", "--parent", epic["code"], "--slug", "failure")
+        bp = Path(bug["path"]).relative_to(self.plan).as_posix()
+        result = self.parsed("route", "--session-uid", session["uid"], "--kind", "bug",
+                             "--work-path", bp)
+        self.assertEqual(result["classification"], "mixed")
+        self.assertEqual(set(result["work_refs"]), {epic["uid"], bug["uid"]})
+        self.assertEqual(self.parsed("check")["status"], "PASS")
+
+    def test_route_requires_exact_path_for_legacy(self):
+        session = self.parsed("new-session")
+        initial = Path(session["path"]).read_bytes()
+        invalid = self.call("route", "--session-uid", session["uid"], "--kind", "epic",
+                            "--work-path", "EPIC-011")
+        self.assertEqual(invalid.returncode, 2)
+        self.assertEqual(Path(session["path"]).read_bytes(), initial)
+        result = self.parsed("route", "--session-uid", session["uid"], "--kind", "epic",
+                             "--work-path", "epics/EPIC-011-basic.md")
+        self.assertEqual(result["work_refs"], ["path:epics/EPIC-011-basic.md"])
+
+    def test_route_rejects_native_session_and_does_not_create_shadow_document(self):
+        native = self.plan / "sessions/work" / ("b"*32 + ".json")
+        native.write_bytes(b"private token: never-read")
+        before = set((self.plan / "sessions/work").iterdir())
+        response = self.call("route", "--session-uid", "N-"+"b"*32, "--kind", "research")
+        self.assertEqual(response.returncode, 2)
+        self.assertEqual(before, set((self.plan / "sessions/work").iterdir()))
+        self.assertEqual(native.read_bytes(), b"private token: never-read")
+
+
+
 if __name__ == "__main__":
     unittest.main()

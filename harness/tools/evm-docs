@@ -24,6 +24,10 @@ SESSION = re.compile(r"S-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\Z")
 NATIVE = re.compile(r"[0-9a-f]{32}\.json\Z")
 HEADER = re.compile(r'<!-- evm-doc: (\{[^\n]*\}) -->\s*')
 KINDS = {"EPIC", "TASK", "BUG", "ADR", "SESSION", "DOC"}
+ROUTES = {"epic", "task", "bug", "backlog", "research", "one_off", "no_epic"}
+CLASSIFICATIONS = ROUTES | {"undecided", "mixed"}
+REF = re.compile(r"[A-Z]+-[0-9][A-Za-z0-9_-]{0,63}\Z")
+PATH_REF = re.compile(r"path:(?:epics|bugs|backlog)/[A-Za-z0-9_.-]+\.md\Z")
 INDEX_FILES = {"_catalog.json", "_catalog.md"}
 MAX_DOCS = 10000
 
@@ -57,7 +61,11 @@ def metadata(path):
     if match is None:
         raise ValueError("Malformed evm-doc header")
     data = json.loads(match.group(1))
-    if set(data) != {"schema", "uid", "project", "kind", "code", "status", "work_refs"}:
+    if not isinstance(data, dict):
+        raise ValueError("Metadata must be a JSON object")
+    base = {"schema", "uid", "project", "kind", "code", "status", "work_refs"}
+    extra = {"classification", "route_history"} if data.get("kind") == "SESSION" else set()
+    if not base <= set(data) or set(data) - base - extra:
         raise ValueError("Unknown/incomplete evm-doc metadata")
     if data["schema"] != 1 or not isinstance(data["uid"], str) or not UID.fullmatch(data["uid"]):
         raise ValueError("Invalid machine UID")
@@ -71,16 +79,28 @@ def metadata(path):
         raise ValueError("Invalid status")
     if not isinstance(data["work_refs"], list) or len(data["work_refs"]) > 32:
         raise ValueError("Invalid work references")
-    if not all(isinstance(x, str) and re.fullmatch(r"[A-Z]+-[0-9][A-Za-z0-9_-]{0,63}", x)
-               for x in data["work_refs"]):
+    if not all(isinstance(x, str) and (REF.fullmatch(x) or UID.fullmatch(x) or
+                                       PATH_REF.fullmatch(x)) for x in data["work_refs"]):
         raise ValueError("Invalid work reference")
+    if data["kind"] == "SESSION":
+        if data.get("classification", "undecided") not in CLASSIFICATIONS:
+            raise ValueError("Invalid classification")
+        history = data.get("route_history", [])
+        if not isinstance(history, list) or len(history) > 20:
+            raise ValueError("Invalid route history")
+        for event in history:
+            if (not isinstance(event, dict) or set(event) != {"kind", "work_ref", "time"}
+                    or event["kind"] not in ROUTES
+                    or (event["work_ref"] is not None and event["work_ref"] not in data["work_refs"])
+                    or type(event["time"]) is not int):
+                raise ValueError("Invalid route event")
     return data
 
 
 def inventory(planning, project):
     entries, problems = [], []
     roots = [
-        ("epics", "markdown"), ("bugs", "markdown"),
+        ("epics", "markdown"), ("bugs", "markdown"), ("backlog", "markdown"),
         ("sessions/active", "markdown"), ("sessions/archive", "markdown"),
         ("sessions/work", "native_json")
     ]
@@ -109,7 +129,7 @@ def inventory(planning, project):
                 if source == "native_json":
                     # Index only the hashed basename. Never read private native JSON body.
                     entry = dict(uid="N-"+p.stem, kind="SESSION", code=None,
-                                 path=rel, status="unknown", source=source,
+                                 path=rel, status="unknown", source=source, classification="unknown",
                                  identity="native_session_key", work_refs=[])
                 else:
                     raw = metadata(p)
@@ -118,6 +138,7 @@ def inventory(planning, project):
                             raise ValueError("Document project differs from selected project")
                         entry = dict(uid=raw["uid"], kind=raw["kind"], code=raw["code"],
                                      path=rel, status=raw["status"], source=source,
+                                     classification=raw.get("classification", "undecided") if raw["kind"] == "SESSION" else None,
                                      identity="explicit_uid", work_refs=raw["work_refs"])
                     else:
                         code = doc_code(p.name) if folder in {"epics", "bugs"} else None
@@ -125,6 +146,7 @@ def inventory(planning, project):
                         legacy = hashlib.sha256((project+"\0"+rel).encode()).hexdigest()[:20]
                         entry = dict(uid="L-"+legacy, kind=kind, code=code,
                                      path=rel, status="unknown", source=source,
+                                     classification="unknown" if kind == "SESSION" else None,
                                      identity="legacy_path_bound", work_refs=[])
                 entries.append(entry)
             except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as ex:
@@ -155,8 +177,8 @@ def output(catalog):
 def as_markdown(catalog):
     rows = [f"# Каталог документов — {catalog['project']}", "",
             "> Сгенерирован evm-docs. Не редактировать: источник — сами документы.", "",
-            "| Вид | Код | UID | Статус | Адрес |",
-            "|---|---|---|---|---|"]
+            "| Вид | Код | UID | Маршрут | Статус | Адрес |",
+            "|---|---|---|---|---|---|"]
     for item in catalog["entries"]:
         ref = "../" + item["path"]
         # Catalog lives in sessions/. Other session files are relative to sessions/.
@@ -164,7 +186,7 @@ def as_markdown(catalog):
             ref = ref[len("../sessions/"):]
         href = quote(ref, safe="/.-_")
         rows.append(f"| {item['kind']} | {item['code'] or '—'} | {item['uid']} | "
-                    f"{item['status']} | [{item['path']}]({href}) |")
+                    f"{item.get('classification') or '—'} | {item['status']} | [{item['path']}]({href}) |")
     if catalog["problems"]:
         rows.extend(["", "## Проблемы и неоднозначности", ""])
         for problem in catalog["problems"]:
@@ -243,7 +265,8 @@ def run(args):
                         continue
                     path = active / (code+".md")
                     data = {"schema": 1, "uid": uid, "project": args.project, "kind": "SESSION",
-                            "code": code, "status": "active", "work_refs": args.work_ref}
+                            "code": code, "status": "active", "classification": "undecided",
+                            "route_history": [], "work_refs": args.work_ref}
                     line = "<!-- evm-doc: "+json.dumps(data, separators=(",", ":"), ensure_ascii=False)+" -->\n"
                     content = body.replace("<проект/YYYY-MM-DD_N>", args.project+"/"+code)
                     content = content.replace("S-YYYYMMDDThhmmssZ-<12hex>", code)
@@ -312,6 +335,73 @@ def run(args):
             return 0 if index_state == "REFRESHED" else 3
         finally:
             os.close(fd)
+    if args.action == "route":
+        fd = lock(plan)
+        try:
+            catalog = inventory(plan, args.project)
+            if any(p["severity"] == "error" for p in catalog["problems"]):
+                raise ValueError("Invalid catalog: cannot change route")
+            matched = [x for x in catalog["entries"] if x["uid"] == args.session_uid
+                       and x["kind"] == "SESSION" and x["source"] == "markdown"
+                       and x["identity"] == "explicit_uid"
+                       and x["path"].startswith("sessions/active/")]
+            if len(matched) != 1:
+                raise ValueError("Unique active Markdown session UID required")
+            path = plan / matched[0]["path"]
+            meta = metadata(path)
+            if meta["uid"] != args.session_uid or meta["status"] != "active":
+                raise ValueError("Session identity or active status changed")
+            linked = None
+            if args.kind in {"epic", "task", "bug", "backlog"} and not args.work_path:
+                raise ValueError("An exact work path is required")
+            if args.kind in {"research", "one_off", "no_epic"} and args.work_path:
+                raise ValueError("Unexpected work path")
+            if args.work_path:
+                if (Path(args.work_path).is_absolute() or ".." in Path(args.work_path).parts
+                        or not re.fullmatch(r"(?:epics|bugs|backlog)/[A-Za-z0-9_.-]+\.md",
+                                            args.work_path)):
+                    raise ValueError("Noncanonical work path")
+                targets = [x for x in catalog["entries"] if x["path"] == args.work_path]
+                expected = {"epic": "EPIC", "task": "TASK", "bug": "BUG", "backlog": "DOC"}[args.kind]
+                if (len(targets) != 1 or targets[0]["kind"] != expected or
+                        (args.kind == "backlog" and not targets[0]["path"].startswith("backlog/"))):
+                    raise ValueError("Exact work document/kind not found")
+                item = targets[0]
+                linked = item["uid"] if item["identity"] == "explicit_uid" else "path:"+item["path"]
+            history = meta.get("route_history", [])
+            if len(history) >= 20:
+                raise ValueError("Route history full")
+            refs = meta["work_refs"][:]
+            if linked and linked not in refs:
+                if len(refs) >= 32:
+                    raise ValueError("Work refs full")
+                refs.append(linked)
+            previous = meta.get("classification", "undecided")
+            classification = args.kind if previous in {"undecided", args.kind} else "mixed"
+            event = {"kind": args.kind, "work_ref": linked,
+                     "time": int(dt.datetime.now(dt.timezone.utc).timestamp())}
+            updated = {**meta, "classification": classification,
+                       "work_refs": refs, "route_history": history + [event]}
+            raw = safe_file(path).read_bytes()
+            head, newline, body = raw.partition(b"\n")
+            if not newline or len(head) > 4096:
+                raise ValueError("Invalid session header")
+            new_head = ("<!-- evm-doc: " + json.dumps(updated, ensure_ascii=False,
+                                                     separators=(",", ":")) + " -->\n").encode()
+            if len(new_head) > 4096:
+                raise ValueError("Route metadata too long")
+            atomic(path, new_head + body)
+            try:
+                refresh_catalog(plan, args.project)
+                indexed = "REFRESHED"
+            except (ValueError, OSError):
+                indexed = "PENDING_REBUILD"
+            print(json.dumps({"status": "ROUTED_NOT_APPROVED", "session_uid": meta["uid"],
+                              "classification": classification, "work_refs": refs,
+                              "catalog": indexed}, ensure_ascii=False))
+            return 0 if indexed == "REFRESHED" else 3
+        finally:
+            os.close(fd)
     catalog = inventory(plan, args.project)
     errs = [p for p in catalog["problems"] if p["severity"] == "error"]
     if args.action == "index":
@@ -349,6 +439,10 @@ def main():
     w.add_argument("--kind", choices=["EPIC", "TASK", "BUG"], required=True)
     w.add_argument("--slug", required=True)
     w.add_argument("--parent")
+    r = sub.add_parser("route", help="classify a session after discovery; not owner approval")
+    r.add_argument("--session-uid", required=True)
+    r.add_argument("--kind", choices=sorted(ROUTES), required=True)
+    r.add_argument("--work-path", help="exact relative path, not human code")
     args = parser.parse_args()
     try:
         return run(args)
