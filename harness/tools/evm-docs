@@ -1,0 +1,455 @@
+#!/usr/bin/env python3
+"""Local EVM document inventory. Derived indexes are not authority or approvals."""
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import sys
+import tempfile
+from urllib.parse import quote
+
+# new-work chooses EPIC and child sequence only under a local flock; it is
+# not a distributed/Git allocator. Remote merges require independent checks.
+
+PROJECT = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
+CODE = re.compile(r"((?:EPIC|TASK|BUG|ADR)-[0-9]+(?:-[0-9]+)?)(?:-|\Z)")
+UID = re.compile(r"D-[0-9a-f]{24}\Z")
+SESSION = re.compile(r"S-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\Z")
+NATIVE = re.compile(r"[0-9a-f]{32}\.json\Z")
+HEADER = re.compile(r'<!-- evm-doc: (\{[^\n]*\}) -->\s*')
+KINDS = {"EPIC", "TASK", "BUG", "ADR", "SESSION", "DOC"}
+ROUTES = {"epic", "task", "bug", "backlog", "research", "one_off", "no_epic"}
+CLASSIFICATIONS = ROUTES | {"undecided", "mixed"}
+REF = re.compile(r"[A-Z]+-[0-9][A-Za-z0-9_-]{0,63}\Z")
+PATH_REF = re.compile(r"path:(?:epics|bugs|backlog)/[A-Za-z0-9_.-]+\.md\Z")
+INDEX_FILES = {"_catalog.json", "_catalog.md"}
+MAX_DOCS = 10000
+
+
+def checked_dir(path):
+    path = Path(path)
+    if not path.is_absolute() or path.resolve() != path or not path.is_dir():
+        raise ValueError("Planning directory must be canonical, absolute and existing")
+    return path
+
+
+def safe_file(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("Symlink/special document refused")
+    if path.stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("Document larger than 2 MiB")
+    return path
+
+
+def doc_code(name):
+    found = CODE.match(Path(name).stem)
+    return found.group(1) if found else None
+
+
+def metadata(path):
+    with safe_file(path).open("rb") as stream:
+        first = stream.readline(4096).decode("utf-8", errors="replace").rstrip("\n")
+    if not first.startswith("<!-- evm-doc:"):
+        return None
+    match = HEADER.fullmatch(first)
+    if match is None:
+        raise ValueError("Malformed evm-doc header")
+    data = json.loads(match.group(1))
+    if not isinstance(data, dict):
+        raise ValueError("Metadata must be a JSON object")
+    base = {"schema", "uid", "project", "kind", "code", "status", "work_refs"}
+    extra = {"classification", "route_history"} if data.get("kind") == "SESSION" else set()
+    if not base <= set(data) or set(data) - base - extra:
+        raise ValueError("Unknown/incomplete evm-doc metadata")
+    if data["schema"] != 1 or not isinstance(data["uid"], str) or not UID.fullmatch(data["uid"]):
+        raise ValueError("Invalid machine UID")
+    if data["kind"] not in KINDS or not isinstance(data["code"], str):
+        raise ValueError("Invalid kind or code")
+    if data["kind"] == "SESSION" and not SESSION.fullmatch(data["code"]):
+        raise ValueError("Invalid session code")
+    if data["kind"] != "SESSION" and data["code"] != doc_code(path.name):
+        raise ValueError("Code and filename differ")
+    if not isinstance(data["status"], str) or len(data["status"]) > 32:
+        raise ValueError("Invalid status")
+    if not isinstance(data["work_refs"], list) or len(data["work_refs"]) > 32:
+        raise ValueError("Invalid work references")
+    if not all(isinstance(x, str) and (REF.fullmatch(x) or UID.fullmatch(x) or
+                                       PATH_REF.fullmatch(x)) for x in data["work_refs"]):
+        raise ValueError("Invalid work reference")
+    if data["kind"] == "SESSION":
+        if data.get("classification", "undecided") not in CLASSIFICATIONS:
+            raise ValueError("Invalid classification")
+        history = data.get("route_history", [])
+        if not isinstance(history, list) or len(history) > 20:
+            raise ValueError("Invalid route history")
+        for event in history:
+            if (not isinstance(event, dict) or set(event) != {"kind", "work_ref", "time"}
+                    or event["kind"] not in ROUTES
+                    or (event["work_ref"] is not None and event["work_ref"] not in data["work_refs"])
+                    or type(event["time"]) is not int):
+                raise ValueError("Invalid route event")
+    return data
+
+
+def inventory(planning, project):
+    entries, problems = [], []
+    roots = [
+        ("epics", "markdown"), ("bugs", "markdown"), ("backlog", "markdown"),
+        ("sessions/active", "markdown"), ("sessions/archive", "markdown"),
+        ("sessions/work", "native_json")
+    ]
+    for folder, source in roots:
+        base = planning / folder
+        if not base.exists() and not base.is_symlink():
+            continue
+        if base.is_symlink() or not base.is_dir():
+            problems.append({"severity": "error", "code": "UNSAFE_DIRECTORY", "path": folder})
+            continue
+        for p in sorted(base.iterdir()):
+            if p.name.startswith(".") or p.name in INDEX_FILES:
+                continue
+            if not p.is_file() or p.is_symlink():
+                if p.is_symlink():
+                    problems.append({"severity": "error", "code": "SYMLINK", "path": str(p.relative_to(planning))})
+                continue
+            if source == "markdown" and p.suffix != ".md":
+                continue
+            if source == "native_json" and not NATIVE.fullmatch(p.name):
+                continue
+            if len(entries) >= MAX_DOCS:
+                raise ValueError("Document inventory limit exceeded")
+            rel = p.relative_to(planning).as_posix()
+            try:
+                if source == "native_json":
+                    # Index only the hashed basename. Never read private native JSON body.
+                    entry = dict(uid="N-"+p.stem, kind="SESSION", code=None,
+                                 path=rel, status="unknown", source=source, classification="unknown",
+                                 identity="native_session_key", work_refs=[])
+                else:
+                    raw = metadata(p)
+                    if raw is not None:
+                        if raw["project"] != project:
+                            raise ValueError("Document project differs from selected project")
+                        entry = dict(uid=raw["uid"], kind=raw["kind"], code=raw["code"],
+                                     path=rel, status=raw["status"], source=source,
+                                     classification=raw.get("classification", "undecided") if raw["kind"] == "SESSION" else None,
+                                     identity="explicit_uid", work_refs=raw["work_refs"])
+                    else:
+                        code = doc_code(p.name) if folder in {"epics", "bugs"} else None
+                        kind = code.split("-")[0] if code else "SESSION" if folder.startswith("sessions/") else "DOC"
+                        legacy = hashlib.sha256((project+"\0"+rel).encode()).hexdigest()[:20]
+                        entry = dict(uid="L-"+legacy, kind=kind, code=code,
+                                     path=rel, status="unknown", source=source,
+                                     classification="unknown" if kind == "SESSION" else None,
+                                     identity="legacy_path_bound", work_refs=[])
+                entries.append(entry)
+            except (ValueError, OSError, UnicodeError, json.JSONDecodeError) as ex:
+                problems.append({"severity": "error", "code": "BAD_DOCUMENT",
+                                 "path": rel, "reason": type(ex).__name__})
+    entries.sort(key=lambda x: (x["kind"], x["code"] or "", x["path"]))
+    by_uid, by_code = {}, {}
+    for e in entries:
+        by_uid.setdefault(e["uid"], []).append(e)
+        if e["code"] is not None:
+            by_code.setdefault(e["code"], []).append(e)
+    for uid, hits in sorted(by_uid.items()):
+        if len(hits) > 1:
+            problems.append({"severity": "error", "code": "DUPLICATE_UID", "uid": uid,
+                             "paths": [e["path"] for e in hits]})
+    for code, hits in sorted(by_code.items()):
+        if len(hits) > 1:
+            severity = "error" if any(e["identity"] == "explicit_uid" for e in hits) else "warning"
+            problems.append({"severity": severity, "code": "AMBIGUOUS_CODE",
+                             "human_code": code, "paths": [e["path"] for e in hits]})
+    return {"schema": 1, "project": project, "entries": entries, "problems": problems}
+
+
+def output(catalog):
+    return (json.dumps(catalog, ensure_ascii=False, sort_keys=True, indent=2)+"\n").encode()
+
+
+def as_markdown(catalog):
+    rows = [f"# Каталог документов — {catalog['project']}", "",
+            "> Сгенерирован evm-docs. Не редактировать: источник — сами документы.", "",
+            "| Вид | Код | UID | Маршрут | Статус | Адрес |",
+            "|---|---|---|---|---|---|"]
+    for item in catalog["entries"]:
+        ref = "../" + item["path"]
+        # Catalog lives in sessions/. Other session files are relative to sessions/.
+        if ref.startswith("../sessions/"):
+            ref = ref[len("../sessions/"):]
+        href = quote(ref, safe="/.-_")
+        rows.append(f"| {item['kind']} | {item['code'] or '—'} | {item['uid']} | "
+                    f"{item.get('classification') or '—'} | {item['status']} | [{item['path']}]({href}) |")
+    if catalog["problems"]:
+        rows.extend(["", "## Проблемы и неоднозначности", ""])
+        for problem in catalog["problems"]:
+            rows.append(f"- {problem['severity']}: {problem['code']}"
+                        + (f" — {problem['human_code']}" if "human_code" in problem else "")
+                        + (f" ({', '.join(problem['paths'])})" if "paths" in problem else ""))
+    return ("\n".join(rows)+"\n").encode()
+
+
+def lock(planning):
+    root = planning / "sessions"
+    if root.is_symlink():
+        raise ValueError("Symlink sessions directory refused")
+    root.mkdir(mode=0o700, exist_ok=True)
+    # Linux flock on the existing directory: no untracked lock file.
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    if not stat.S_ISDIR(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ValueError("Unsafe session directory")
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
+def atomic(path, blob):
+    if path.is_symlink():
+        raise ValueError("Index symlink refused")
+    fd, tmp = tempfile.mkstemp(prefix=".evm-docs-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(blob)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def refresh_catalog(plan, project):
+    catalog = inventory(plan, project)
+    if any(p["severity"] == "error" for p in catalog["problems"]):
+        raise ValueError("Catalog contains errors; no derived index replaced")
+    root = plan / "sessions"
+    atomic(root / "_catalog.json", output(catalog))
+    atomic(root / "_catalog.md", as_markdown(catalog))
+    return catalog
+
+
+def run(args):
+    plan = checked_dir(args.planning)
+    if not PROJECT.fullmatch(args.project):
+        raise ValueError("Invalid project key")
+    if args.action in {"new-session", "new-work"}:
+        fd = lock(plan)
+        try:
+            # Under this host-local lock: inspect current names immediately before allocating.
+            current = inventory(plan, args.project)
+            if any(p["severity"] == "error" for p in current["problems"]):
+                raise ValueError("Existing invalid machine document; creation blocked")
+            existing_uid = {e["uid"] for e in current["entries"]}
+            if args.action == "new-session":
+                if (len(args.work_ref) > 32 or not all(
+                        re.fullmatch(r"[A-Z]+-[0-9][A-Za-z0-9_-]{0,63}", v)
+                        for v in args.work_ref)):
+                    raise ValueError("Invalid work refs")
+                active = plan / "sessions/active"
+                if active.is_symlink():
+                    raise ValueError("Symlink active directory refused")
+                active.mkdir(mode=0o700, exist_ok=True)
+                template = Path(__file__).resolve().parent.parent / "session-record.template.md"
+                body = safe_file(template).read_text(encoding="utf-8")
+                for attempt in range(10):
+                    code = "S-"+dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")+"-"+secrets.token_hex(6)
+                    uid = "D-"+secrets.token_hex(12)
+                    if uid in existing_uid:
+                        continue
+                    path = active / (code+".md")
+                    data = {"schema": 1, "uid": uid, "project": args.project, "kind": "SESSION",
+                            "code": code, "status": "active", "classification": "undecided",
+                            "route_history": [], "work_refs": args.work_ref}
+                    line = "<!-- evm-doc: "+json.dumps(data, separators=(",", ":"), ensure_ascii=False)+" -->\n"
+                    content = body.replace("<проект/YYYY-MM-DD_N>", args.project+"/"+code)
+                    content = content.replace("S-YYYYMMDDThhmmssZ-<12hex>", code)
+                    content = content.replace("YYYY-MM-DD_N", code)
+                    content = content.replace("../evm2/SESSION_RECORD.md",
+                        "https://github.com/Skunokil/vosmenog/blob/main/evm2/SESSION_RECORD.md")
+                    content = content.replace("<проект>", args.project)
+                    break
+                else:
+                    raise RuntimeError("Unable to allocate session UID")
+            else:
+                if not re.fullmatch(r"[a-z][a-z0-9-]{0,50}", args.slug):
+                    raise ValueError("Invalid document slug")
+                if args.kind == "EPIC":
+                    if args.parent:
+                        raise ValueError("EPIC cannot have EPIC parent")
+                    used = [int(m.group(1)) for e in current["entries"]
+                            if e["code"] and (m := re.fullmatch(r"EPIC-(\d+)", e["code"]))]
+                    code = "EPIC-"+str(max(used, default=0)+1).zfill(3)
+                    folder = "epics"
+                    refs = []
+                else:
+                    matches = [e for e in current["entries"] if e["code"] == args.parent and e["kind"] == "EPIC"]
+                    if len(matches) != 1:
+                        raise ValueError("Parent EPIC code missing or ambiguous")
+                    parent_number = args.parent[5:]
+                    pattern = re.compile(rf"{args.kind}-{re.escape(parent_number)}-(\d+)\Z")
+                    used = [int(m.group(1)) for e in current["entries"]
+                            if e["code"] and (m := pattern.fullmatch(e["code"]))]
+                    code = args.kind+"-"+parent_number+"-"+str(max(used, default=0)+1).zfill(3)
+                    folder = "bugs" if args.kind == "BUG" else "epics"
+                    refs = [args.parent]
+                directory = plan / folder
+                if directory.is_symlink() or not directory.is_dir():
+                    raise ValueError("Expected ordinary existing planning directory")
+                path = directory / (code+"-"+args.slug+".md")
+                uid = "D-"+secrets.token_hex(12)
+                for attempt in range(10):
+                    if uid not in existing_uid:
+                        break
+                    uid = "D-"+secrets.token_hex(12)
+                else:
+                    raise RuntimeError("Unable to allocate document UID")
+                data = {"schema": 1, "uid": uid, "project": args.project, "kind": args.kind,
+                        "code": code, "status": "draft", "work_refs": refs}
+                line = "<!-- evm-doc: "+json.dumps(data, separators=(",", ":"), ensure_ascii=False)+" -->\n"
+                content = (f"# {code}: {args.slug.replace('-', ' ')}\n\n"
+                           "**Статус:** draft — не GO, не разрешение на исполнение.\n\n"
+                           "## Цель и ценность\n\n## Контракт результата и AC\n\n"
+                           "## Scope / полномочия / решения\n\n## Проверки и evidence\n\n")
+            if path.exists() or path.is_symlink():
+                raise FileExistsError("Document name exists; no overwrite")
+            out = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(out, "w", encoding="utf-8") as stream:
+                stream.write(line+content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                refresh_catalog(plan, args.project)
+                index_state = "REFRESHED"
+            except (ValueError, OSError):
+                index_state = "PENDING_REBUILD"
+            print(json.dumps({"status": "CREATED_DRAFT_NOT_APPROVED", "uid": uid,
+                              "code": code, "path": str(path),
+                              "catalog": index_state}, ensure_ascii=False))
+            return 0 if index_state == "REFRESHED" else 3
+        finally:
+            os.close(fd)
+    if args.action == "route":
+        fd = lock(plan)
+        try:
+            catalog = inventory(plan, args.project)
+            if any(p["severity"] == "error" for p in catalog["problems"]):
+                raise ValueError("Invalid catalog: cannot change route")
+            matched = [x for x in catalog["entries"] if x["uid"] == args.session_uid
+                       and x["kind"] == "SESSION" and x["source"] == "markdown"
+                       and x["identity"] == "explicit_uid"
+                       and x["path"].startswith("sessions/active/")]
+            if len(matched) != 1:
+                raise ValueError("Unique active Markdown session UID required")
+            path = plan / matched[0]["path"]
+            meta = metadata(path)
+            if meta["uid"] != args.session_uid or meta["status"] != "active":
+                raise ValueError("Session identity or active status changed")
+            linked = None
+            if args.kind in {"epic", "task", "bug", "backlog"} and not args.work_path:
+                raise ValueError("An exact work path is required")
+            if args.kind in {"research", "one_off", "no_epic"} and args.work_path:
+                raise ValueError("Unexpected work path")
+            if args.work_path:
+                if (Path(args.work_path).is_absolute() or ".." in Path(args.work_path).parts
+                        or not re.fullmatch(r"(?:epics|bugs|backlog)/[A-Za-z0-9_.-]+\.md",
+                                            args.work_path)):
+                    raise ValueError("Noncanonical work path")
+                targets = [x for x in catalog["entries"] if x["path"] == args.work_path]
+                expected = {"epic": "EPIC", "task": "TASK", "bug": "BUG", "backlog": "DOC"}[args.kind]
+                if (len(targets) != 1 or targets[0]["kind"] != expected or
+                        (args.kind == "backlog" and not targets[0]["path"].startswith("backlog/"))):
+                    raise ValueError("Exact work document/kind not found")
+                item = targets[0]
+                linked = item["uid"] if item["identity"] == "explicit_uid" else "path:"+item["path"]
+            history = meta.get("route_history", [])
+            if len(history) >= 20:
+                raise ValueError("Route history full")
+            refs = meta["work_refs"][:]
+            if linked and linked not in refs:
+                if len(refs) >= 32:
+                    raise ValueError("Work refs full")
+                refs.append(linked)
+            previous = meta.get("classification", "undecided")
+            classification = args.kind if previous in {"undecided", args.kind} else "mixed"
+            event = {"kind": args.kind, "work_ref": linked,
+                     "time": int(dt.datetime.now(dt.timezone.utc).timestamp())}
+            updated = {**meta, "classification": classification,
+                       "work_refs": refs, "route_history": history + [event]}
+            raw = safe_file(path).read_bytes()
+            head, newline, body = raw.partition(b"\n")
+            if not newline or len(head) > 4096:
+                raise ValueError("Invalid session header")
+            new_head = ("<!-- evm-doc: " + json.dumps(updated, ensure_ascii=False,
+                                                     separators=(",", ":")) + " -->\n").encode()
+            if len(new_head) > 4096:
+                raise ValueError("Route metadata too long")
+            atomic(path, new_head + body)
+            try:
+                refresh_catalog(plan, args.project)
+                indexed = "REFRESHED"
+            except (ValueError, OSError):
+                indexed = "PENDING_REBUILD"
+            print(json.dumps({"status": "ROUTED_NOT_APPROVED", "session_uid": meta["uid"],
+                              "classification": classification, "work_refs": refs,
+                              "catalog": indexed}, ensure_ascii=False))
+            return 0 if indexed == "REFRESHED" else 3
+        finally:
+            os.close(fd)
+    catalog = inventory(plan, args.project)
+    errs = [p for p in catalog["problems"] if p["severity"] == "error"]
+    if args.action == "index":
+        if errs:
+            print(json.dumps({"status": "BLOCKED_BY_INDEX_ERRORS", "errors": errs}, ensure_ascii=False))
+            return 2
+        fd = lock(plan)
+        try:
+            catalog = refresh_catalog(plan, args.project)
+        finally:
+            os.close(fd)
+    if args.action == "check":
+        index_file = plan / "sessions/_catalog.json"
+        if index_file.exists() or index_file.is_symlink():
+            if index_file.is_symlink() or index_file.read_bytes() != output(catalog):
+                errs.append({"severity": "error", "code": "STALE_OR_UNSAFE_INDEX"})
+    summary = {"status": "PASS" if not errs else "FAIL",
+               "project": args.project, "documents": len(catalog["entries"]),
+               "errors": errs, "warnings": [p for p in catalog["problems"]
+                                             if p["severity"] == "warning"]}
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return 0 if not errs else 2
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--planning", required=True)
+    parser.add_argument("--project", required=True)
+    sub = parser.add_subparsers(dest="action", required=True)
+    for cmd in ("scan", "check", "index"):
+        sub.add_parser(cmd)
+    s = sub.add_parser("new-session")
+    s.add_argument("--work-ref", action="append", default=[])
+    w = sub.add_parser("new-work")
+    w.add_argument("--kind", choices=["EPIC", "TASK", "BUG"], required=True)
+    w.add_argument("--slug", required=True)
+    w.add_argument("--parent")
+    r = sub.add_parser("route", help="classify a session after discovery; not owner approval")
+    r.add_argument("--session-uid", required=True)
+    r.add_argument("--kind", choices=sorted(ROUTES), required=True)
+    r.add_argument("--work-path", help="exact relative path, not human code")
+    args = parser.parse_args()
+    try:
+        return run(args)
+    except (ValueError, OSError, RuntimeError) as error:
+        print("evm-docs: "+type(error).__name__+"; no author document was overwritten.", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

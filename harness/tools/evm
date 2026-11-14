@@ -410,10 +410,23 @@ def boot(key, role, brief):
     ns = (plan / "sessions/next-session.md") if plan else None
     epic_line = None
     if plan and ns and ns.is_file():
-        m = re.search(r"EPIC-(\d+)", ns.read_text(encoding="utf-8", errors="replace"))
-        hit = sorted((plan / "epics").glob(f"EPIC-{m.group(1)}*.md")) if m else []
-        if hit:
-            epic_line = f"              эпик из горячей памяти: {mark(hit[0])}"
+        # Do not choose sorted(...)[0] for an ambiguous human EPIC code.
+        hot = ns.read_text(encoding="utf-8", errors="replace")
+        # Only the "first task" section can identify the active EPIC.
+        # Other open EPICs later in hot memory must never be guessed as current.
+        first = re.search(r"(?ms)^## Первое дело[^\n]*\n(.*?)(?=^## |\Z)", hot)
+        m = re.search(r"(?<![A-Z0-9])EPIC-(\d+)(?!\d)", first.group(1)) if first else None
+        if m:
+            human_code = "EPIC-" + m.group(1)
+            rx = re.compile(re.escape(human_code) + r"(?:-.+)?\.md\Z")
+            hits = sorted(p for p in (plan / "epics").glob("EPIC-*.md") if rx.fullmatch(p.name))
+            if len(hits) == 1:
+                epic_line = f"              эпик из горячей памяти: {mark(hits[0])}"
+            elif len(hits) > 1:
+                epic_line = (f"              ! неоднозначный {human_code}: {len(hits)} файлов; "
+                             "используй точный путь/UID из каталога, не выбирай первый")
+            else:
+                epic_line = f"              ! {human_code} не найден: проверь точную ссылку"
     if brief:
         L.append("Контекст уже был; читай заново только смену:")
     else:
@@ -430,6 +443,9 @@ def boot(key, role, brief):
         L.append(f" 5 смена      {mark(plan / 'sessions/next-session.md')} - целиком")
         if epic_line:
             L.append(epic_line)
+        catalog = plan / 'sessions/_catalog.md'
+        if catalog.is_file():
+            L.append(f"              каталог документов: {tilde(catalog)} (генерируемый индекс)")
         L.append(f"              журнал {tilde(plan / 'sessions/journal.md')} и archive/ - только грепом, не целиком")
     else:
         L.append(" 5 смена      нет каталога планирования в team-work")
@@ -504,6 +520,22 @@ def close(key):
                 else f"строка журнала длиннее {JOURNAL_LINE_MAX} знаков ({len(long_[-1])})")
     else:
         row(False, f"журнала нет: {tilde(jr)}")
+    # Catalog freshness is diagnostic: the local docs inventory cannot invent an owner GO.
+    catalog = plan / "sessions/_catalog.json"
+    docs_tool = HERE / "evm-docs"
+    if catalog.is_file() and docs_tool.is_file():
+        try:
+            checked = subprocess.run([sys.executable, str(docs_tool), "--planning",
+                                      str(plan), "--project", plan.name, "check"],
+                                     capture_output=True, timeout=10)
+            if checked.returncode == 0:
+                row(True, "каталог документов синхронизирован")
+            else:
+                row(False, "каталог документов требует проверки или пересборки (evm-docs index)", warn=True)
+        except (OSError, subprocess.TimeoutExpired):
+            row(False, "индексатор документов недоступен", warn=True)
+    elif not catalog.exists():
+        out.append(" ? каталог документов пока не создан: evm-docs --planning <путь> --project <ключ> index")
     if w["dirty"]:
         row(False, f"незакоммиченных правок в проекте и планировании: {w['dirty']} - свои закоммить, чужие не трогай", warn=True)
     else:
@@ -636,6 +668,8 @@ def cmd_status():
         has = lambda ev, needle: any(needle in str(h.get("command", "")) for e in hooks.get(ev, []) for h in e.get("hooks", []))
         print(f"Хуки Claude Code в settings.json: старт сессии {'есть' if has('SessionStart', 'session-start.sh') else 'нет'}, "
               f"сторож памяти {'есть' if has('Stop', 'stop-guard.sh') else 'нет'}"
+              f"; Session Record {'подключён' if has('SessionStart', 'evm hook start') else 'не подключён'}"
+              f"; инструментальный след {'подключён' if has('PostToolUse', 'evm hook tool') else 'не подключён'}"
               + ("; disableAllHooks=true - Claude Code их не запускает" if conf.get("disableAllHooks") else ""))
     except (OSError, ValueError):
         print("Хуки Claude Code: ~/.claude/settings.json не найден или не читается")
@@ -771,6 +805,80 @@ def auto_status():
     return 0
 
 
+
+# ---------- optional Session Record lifecycle hooks ----------
+
+def session_hook(event, source):
+    """No permission grants. Only metadata is passed to the record/trace writer."""
+    if harness_off():
+        return 0
+    try:
+        raw = sys.stdin.buffer.read(128001)
+        if len(raw) > 128000:
+            raise ValueError("Oversize hook input")
+        data = json.loads(raw)
+        if not isinstance(data, dict) or data.get("agent_id"):
+            return 0
+        expected = {"start": "SessionStart", "tool": "PostToolUse",
+                    "tool-failure": "PostToolUseFailure", "end": "SessionEnd"}[event]
+        if data.get("hook_event_name") != expected:
+            raise ValueError("Hook event mismatch")
+        sid = data.get("session_id")
+        cwd = data.get("cwd")
+        if (not isinstance(sid, str) or not 1 <= len(sid) <= 160
+                or not isinstance(cwd, str) or not cwd.startswith("/")
+                or len(cwd) > 2048):
+            raise ValueError("Invalid session context")
+        key = infer_project(cwd)
+        if key:
+            _, plan, err = resolve(key)
+            if err or plan is None:
+                raise ValueError("Planning root unavailable")
+            project = key
+        else:
+            project, plan = "personal", HOME / ".config/opencode/memory"
+        hook = HERE / "evm-session"
+        if not hook.is_file() or not plan.is_dir():
+            raise ValueError("Hook adapter unavailable")
+        args = [sys.executable, str(hook), "--planning", str(plan),
+                "--project", project, "--source", source,
+                "--external-id", sid]
+        if event == "start":
+            args.append("ensure")
+        else:
+            args += ["observe", "--event", {
+                "tool": "tool.returned", "tool-failure": "tool.failed",
+                "end": "session.ended"}[event]]
+            if event != "end":
+                name = data.get("tool_name")
+                classes = {"Bash", "Read", "Write", "Edit", "MultiEdit",
+                           "Glob", "Grep", "Task", "WebFetch", "NotebookEdit",
+                           "apply_patch"}
+                args += ["--tool", name if isinstance(name, str) and name in classes else "other"]
+        done = subprocess.run(args, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, timeout=8)
+        if event == "start":
+            status = json.loads(done.stdout) if done.stdout else {}
+            if status.get("status") in {"CREATED", "RESUMED"} and done.returncode == 0:
+                print("EVM Session Record: " + status["path"] + " (" + status["status"] + ").")
+                print("Begin with original intent and uncertainties; EPIC/TASK classification may come later.")
+                print("Trace is metadata-only; capture semantic decisions and evidence in the Session Record.")
+            elif status.get("status") == "CREATED_INDEX_PENDING" and status.get("path"):
+                print("EVM Session Record CREATED: " + status["path"] +
+                      ". Catalog refresh is pending; rebuild index, never recreate the document.")
+            elif status.get("status") == "ALREADY_ARCHIVED" and done.returncode == 0:
+                print("EVM Session Record is already archived: " + status["path"] +
+                      ". Do not reopen or overwrite it; start a new logical session if needed.")
+            elif status.get("status") == "NATIVE_SESSION_OWNED" and done.returncode == 0:
+                print("EVM native JSON session is authoritative; do not create duplicate Markdown.")
+            else:
+                print("EVM Session Record: not_saved; keep a portable in-chat record.")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        if event == "start":
+            print("EVM Session Record: not_saved (hook check failed); use an in-chat record.")
+    return 0
+
+
 # ---------- main ----------
 
 def main():
@@ -786,6 +894,9 @@ def main():
     c.add_argument("project", nargs="?")
     g = sub.add_parser("guard", help="сторожа для хуков")
     g.add_argument("what", choices=["stop"])
+    hk = sub.add_parser("hook", help="opt-in session lifecycle/metadata trace")
+    hk.add_argument("event", choices=["start", "tool", "tool-failure", "end"])
+    hk.add_argument("--source", choices=["claude-code", "codex-generic"], required=True)
     sub.add_parser("off", help="выключить харнесс постоянно")
     sub.add_parser("on", help="включить харнесс обратно")
     sub.add_parser("status", help="состояние харнесса, автообновления, хуков")
@@ -802,6 +913,8 @@ def main():
         return close(a.project)
     if a.cmd == "guard":
         return guard_stop()
+    if a.cmd == "hook":
+        return session_hook(a.event, a.source)
     if a.cmd == "off":
         return cmd_off()
     if a.cmd == "on":

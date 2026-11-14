@@ -10,6 +10,15 @@
             "statusMessage": "Смотрю, кто ещё в работе…"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook start --source claude-code",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [
@@ -18,6 +27,39 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/stop-guard.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook tool --source claude-code",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook tool-failure --source claude-code",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/agent-os/bin/evm hook end --source claude-code",
             "timeout": 10
           }
         ]

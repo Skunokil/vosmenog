@@ -12,6 +12,7 @@
 Сюда НЕ входят: release-gate.sh и psi-mark.sh (привязаны к продукту ds) и
 ~/.claude/agents/*.md (голос и права владельца).
 """
+import argparse
 import datetime
 import json
 import os
@@ -106,7 +107,7 @@ def has_cmd(entries, needle):
     return False
 
 
-def settings():
+def settings(enable_session_hooks=False):
     path = os.path.join(CC, "settings.json")
     with open(os.path.join(HERE, "settings-fragment.json"), encoding="utf-8") as f:
         frag = json.load(f)
@@ -126,6 +127,17 @@ def settings():
     if not has_cmd(st, "stop-guard.sh"):
         st.extend(frag["hooks"]["Stop"])
         changed.append("Stop (сторож конца смены)")
+    if enable_session_hooks:
+        for event in ("SessionStart", "PostToolUse", "PostToolUseFailure", "SessionEnd"):
+            for group in frag["hooks"].get(event, []):
+                for handler in group.get("hooks", []):
+                    command = str(handler.get("command", ""))
+                    if "evm hook " not in command:
+                        continue
+                    existing = hooks.setdefault(event, [])
+                    if not has_cmd(existing, command):
+                        existing.append(group)
+                        changed.append(event + " (Session Record)")
     if "statusLine" not in conf:
         conf["statusLine"] = frag["statusLine"]
         changed.append("statusLine (панель)")
@@ -142,7 +154,11 @@ def settings():
     ok("Claude Code: settings.json - добавлено: %s%s" % (", ".join(changed), " (бэкап: %s)" % os.path.basename(bak) if bak else ""))
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--session-hooks", action="store_true",
+                        help="opt in to SessionStart/PostToolUse/SessionEnd metadata hooks")
+    args = parser.parse_args(argv)
     if os.path.exists(os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".config/vosmenog/harness-off")):
         same("харнесс выключен (evm off): хуки и настройки Claude Code не трогаю; evm on включит")
         return 0
@@ -150,7 +166,7 @@ def main():
         same("Claude Code не найден (~/.claude нет) - адаптер пропущен")
         return 0
     files()
-    settings()
+    settings(enable_session_hooks=args.session_hooks)
     return 0
 
 
