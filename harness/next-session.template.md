@@ -26,7 +26,7 @@
 
 ## Сессионный след и evidence
 
-- **Session Record:** <адрес sessions/active/... или sessions/archive/...>
+- **Session Record:** <project_key + UID + точный путь: sessions/active/... / archive/... / work/...>
 - **Что нельзя подтвердить:** <адреса/ограничения или «нет»>
 
 ## Доступы и окружение

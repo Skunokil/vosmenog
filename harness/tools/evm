@@ -410,10 +410,19 @@ def boot(key, role, brief):
     ns = (plan / "sessions/next-session.md") if plan else None
     epic_line = None
     if plan and ns and ns.is_file():
-        m = re.search(r"EPIC-(\d+)", ns.read_text(encoding="utf-8", errors="replace"))
-        hit = sorted((plan / "epics").glob(f"EPIC-{m.group(1)}*.md")) if m else []
-        if hit:
-            epic_line = f"              эпик из горячей памяти: {mark(hit[0])}"
+        # Do not choose sorted(...)[0] for an ambiguous human EPIC code.
+        m = re.search(r"(?<![A-Z0-9])EPIC-(\d+)(?!\d)", ns.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            human_code = "EPIC-" + m.group(1)
+            rx = re.compile(re.escape(human_code) + r"(?:-.+)?\.md\Z")
+            hits = sorted(p for p in (plan / "epics").glob("EPIC-*.md") if rx.fullmatch(p.name))
+            if len(hits) == 1:
+                epic_line = f"              эпик из горячей памяти: {mark(hits[0])}"
+            elif len(hits) > 1:
+                epic_line = (f"              ! неоднозначный {human_code}: {len(hits)} файлов; "
+                             "используй точный путь/UID из каталога, не выбирай первый")
+            else:
+                epic_line = f"              ! {human_code} не найден: проверь точную ссылку"
     if brief:
         L.append("Контекст уже был; читай заново только смену:")
     else:
@@ -430,6 +439,9 @@ def boot(key, role, brief):
         L.append(f" 5 смена      {mark(plan / 'sessions/next-session.md')} - целиком")
         if epic_line:
             L.append(epic_line)
+        catalog = plan / 'sessions/_catalog.md'
+        if catalog.is_file():
+            L.append(f"              каталог документов: {tilde(catalog)} (генерируемый индекс)")
         L.append(f"              журнал {tilde(plan / 'sessions/journal.md')} и archive/ - только грепом, не целиком")
     else:
         L.append(" 5 смена      нет каталога планирования в team-work")

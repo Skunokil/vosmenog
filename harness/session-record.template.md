@@ -1,9 +1,9 @@
-# YYYY-MM-DD_N — <рабочая сессия>
+# S-YYYYMMDDThhmmssZ-<12hex> — <рабочая сессия>
 
-> **Session Record D0.4.** В проекте: `sessions/active/YYYY-MM-DD_N_session.md` → `sessions/archive/YYYY-MM-DD_N_session.md`; в общей памяти: `~/.config/opencode/memory/active/` → `~/.config/opencode/memory/archive/`. [Контракт](../evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
+> **Session Record D0.4.** Номер и машинный UID выдаёт `evm-docs new-session` либо адаптер с аналогичной гарантией. В проекте: `sessions/active/S-<id>.md` → `sessions/archive/S-<id>.md`; native JSON-контур `sessions/work/` сохраняет свой авторитетный формат. [Контракт](https://github.com/Skunokil/vosmenog/blob/main/evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
 
 ## 1. Паспорт
-- **session_id:** <проект/YYYY-MM-DD_N>
+- **session_id / doc_uid / project_key:** <выданные генератором, не угадывать>
 - **Работа:** <EPIC/TASK/Work Contract, ссылка>
 - **Исполнитель и процессная роль:** <кто и за что отвечает>
 - **Среда:** <агент, модель, версия метода/адаптера — только подтверждённое>
