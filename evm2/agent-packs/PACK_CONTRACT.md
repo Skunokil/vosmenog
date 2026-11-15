@@ -36,7 +36,7 @@
 
 ## Навыки
 
-У каждого skill есть id, source и availability. Значения, например:
+У каждого skill есть id, source и availability. Допустимые значения availability: reference_only, source_only, native_installed, unavailable. Особенности совместимости с конкретной средой указываются отдельно в runtime_note. Значения:
 - reference_only: файл прочитан, инструкции можно обсуждать;
 - source_only: файл существует, но ещё не подключён;
 - native_installed: конкретный runtime реально зарегистрировал навык;

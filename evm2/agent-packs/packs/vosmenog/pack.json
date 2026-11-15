@@ -21,7 +21,9 @@
         "path": "vosmenog/skills/help/SKILL.md",
         "ref": "main"
       },
-      "availability": "opencode_skill_source_only_in_chatgpt"
+      "availability": "source_only",
+      "kind": "skill_source",
+      "runtime_note": "opencode_skill_source_only_in_chatgpt"
     },
     {
       "id": "tutor",
@@ -30,7 +32,9 @@
         "path": "vosmenog/skills/tutor/SKILL.md",
         "ref": "main"
       },
-      "availability": "opencode_skill_source_only_in_chatgpt"
+      "availability": "source_only",
+      "kind": "skill_source",
+      "runtime_note": "opencode_skill_source_only_in_chatgpt"
     },
     {
       "id": "course-project",
@@ -39,7 +43,9 @@
         "path": "vosmenog/skills/course-project/SKILL.md",
         "ref": "main"
       },
-      "availability": "opencode_skill_source_only_in_chatgpt"
+      "availability": "source_only",
+      "kind": "skill_source",
+      "runtime_note": "opencode_skill_source_only_in_chatgpt"
     },
     {
       "id": "persona-maker",
@@ -48,7 +54,9 @@
         "path": "evm2/skills/persona-maker/SKILL.md",
         "ref": "main"
       },
-      "availability": "documentary_skill_not_installed"
+      "availability": "source_only",
+      "kind": "skill_source",
+      "runtime_note": "documentary_skill_not_installed"
     }
   ],
   "authority": "unchanged_by_persona_pack",

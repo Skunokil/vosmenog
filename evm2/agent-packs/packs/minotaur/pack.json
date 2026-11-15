@@ -21,7 +21,9 @@
         "path": "harness/head-kit/head-workflow.md",
         "ref": "main"
       },
-      "availability": "reference_workflow_not_native_skill"
+      "availability": "source_only",
+      "kind": "workflow_reference",
+      "runtime_note": "reference_workflow_not_native_skill"
     },
     {
       "id": "dev-rules",
@@ -30,7 +32,9 @@
         "path": "harness/head-kit/dev-rules.md",
         "ref": "main"
       },
-      "availability": "reference_rules_not_native_skill"
+      "availability": "source_only",
+      "kind": "workflow_reference",
+      "runtime_note": "reference_rules_not_native_skill"
     }
   ],
   "authority": "unchanged_by_persona_pack",
