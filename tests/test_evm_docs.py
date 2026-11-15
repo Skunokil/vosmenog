@@ -201,13 +201,35 @@ class CatalogTests(unittest.TestCase):
         # Regression guard: docs generator really includes D0.6 claim-level fields.
         session = self.parsed("new-session")
         content = Path(session["path"]).read_text(encoding="utf-8")
-        self.assertIn("## 2a. Значимые решения и ограничения — происхождение (D0.6)", content)
+        self.assertIn("## 2a. Значимые решения и ограничения — происхождение (D0.6.1)", content)
         self.assertIn("| claim | origin / evidence_ref | authority | scope / valid_until | confirmation |", content)
         self.assertIn("agent_proposal", content)
         self.assertIn("needs_confirmation", content)
         self.assertIn("handoff_only", content)
+        self.assertIn("scope=unknown", content)
+        self.assertIn("valid_until=unknown", content)
+        self.assertIn("Строгий `confirmation`", content)
         self.assertIn("Сверка утверждений при получении", content)
         self.assertNotIn("S-YYYYMMDDThhmmssZ-<12hex>", content)
+
+
+
+    def test_d061_conflict_fixture_and_oracle_are_kept_separate(self):
+        # Static regression: the negative fixture must really contradict its
+        # primary messages; the answer key must never be bundled in the input.
+        root = Path(__file__).resolve().parents[1]
+        fixture = (root / "evm2/fixtures/D061_SCOPE_CONFLICT.md").read_text(encoding="utf-8")
+        oracle = (root / "evm2/HANDOFF_ACCEPTANCE.md").read_text(encoding="utf-8")
+        self.assertIn('S2 — агент', fixture)
+        self.assertIn('Предлагаю согласовывать любое чтение файлов', fixture)
+        self.assertRegex(fixture, r"\| B \|[^\n]*\| S2 \| owner_direct \| owner \| project \| confirmed \|")
+        self.assertRegex(fixture, r"\| C \|[^\n]*\| S3 \| owner_direct \| owner \| until_revoked \| confirmed \|")
+        self.assertNotIn("scope=unknown", fixture)
+        self.assertNotIn("needs_confirmation", fixture)
+        self.assertIn("**`unknown`**", oracle)
+        self.assertIn("**`needs_confirmation`**", oracle)
+        self.assertIn("B остаётся «область проекта»", oracle)
+        self.assertIn("основной реестр", oracle)
 
 
 if __name__ == "__main__":
