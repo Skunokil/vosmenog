@@ -1,6 +1,6 @@
 # S-YYYYMMDDThhmmssZ-<12hex> — <рабочая сессия>
 
-> **Session Record D0.4.** Номер и машинный UID выдаёт `evm-docs new-session` либо адаптер с аналогичной гарантией. В проекте: `sessions/active/S-<id>.md` → `sessions/archive/S-<id>.md`; native JSON-контур `sessions/work/` сохраняет свой авторитетный формат. [Контракт](https://github.com/Skunokil/vosmenog/blob/main/evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
+> **Session Record D0.6.1 (совместим с паспортом D0.4).** Номер и машинный UID выдаёт `evm-docs new-session` либо адаптер с аналогичной гарантией. В проекте: `sessions/active/S-<id>.md` → `sessions/archive/S-<id>.md`; native JSON-контур `sessions/work/` сохраняет свой авторитетный формат. [Контракт](https://github.com/Skunokil/vosmenog/blob/main/evm2/SESSION_RECORD.md). Не копировать секреты и приватные разговоры.
 
 ## 1. Паспорт
 - **session_id / doc_uid / project_key:** <выданные генератором, не угадывать>
@@ -19,15 +19,17 @@
 - **Scope и GO:** <что уже разрешено, какие стопы действуют>
 - **Развилки:** <открытые решения или «нет»>
 
-## 2a. Значимые решения и ограничения — происхождение (D0.6)
+## 2a. Значимые решения и ограничения — происхождение (D0.6.1)
 
 > Заполнять только существенные пункты. Не копировать сюда все сообщения. Авторитет утверждения ≠ надёжность инструментального события.
 
 | claim | origin / evidence_ref | authority | scope / valid_until | confirmation |
 |---|---|---|---|---|
-| <точное решение/запрет> | <owner_direct / адрес или unavailable> | <owner/delegated/policy/agent_no_authority/unknown> | <active_session/handoff_only/project/until_revoked, либо известная граница> | <confirmed/proposed/needs_confirmation/superseded> |
-| <предложение агента, если влияет на действия> | <agent_proposal / evidence_ref> | agent_no_authority | <точная область, без домыслов> | needs_confirmation |
+| <точное решение/запрет> | <owner_direct / адрес или unavailable> | <owner/delegated/policy/agent_no_authority/unknown> | <active_session/handoff_only/project/until_revoked, подтверждённая граница или unknown> | <confirmed/proposed/needs_confirmation/superseded> |
+| <предложение агента, если влияет на действия> | <agent_proposal / evidence_ref> | agent_no_authority | unknown, если первичный источник молчит | needs_confirmation |
 
+**Строгий `confirmation`:** только `confirmed | proposed | needs_confirmation | superseded`; не используй `not_confirmed`, `owner_not_confirmed` и `not_active` как значения поля.
+**Независимый `scope`:** если область не подтверждается исходным сообщением/политикой, восстанови `scope=unknown` (и `valid_until=unknown`, если срок не установлен), даже если в старом реестре написано `project`. Каждое поле сверяй с первичным источником.
 Не присваивай `owner_direct` ограничению, которое предложил агент; `classification=undecided` — рабочее состояние, а не решение. Временное «не продолжать во время передачи» имеет `scope=handoff_only`, если пользователь не продлил его. Не выдумывай ссылки и `valid_until`. Сохраняй действующие безопасные стопы.
 
 ## 3. Контракт наблюдаемости
@@ -61,6 +63,6 @@
 - **Открытая работа:** <адрес EPIC/TASK/backlog>
 - **Следующее действие:** <исполнитель, критерий, нужен ли новый GO>
 - **Проверка передачи:** <другой агент проверил / handoff_not_verified>
-- **Сверка утверждений при получении:** <неподтверждённые пункты отмечены needs_confirmation прямо в восстановленном состоянии; временные запреты не превращены в бессрочные>
+- **Сверка утверждений при получении:** <строгий confirmation; при отсутствии первичного основания scope=unknown; исправления прямо в основном состоянии; временные запреты не становятся бессрочными>
 - **Стопы:** <не считать недоказанность ограничения новым разрешением или GO>
 - **Завершение:** <время и ссылка на архив; если не закрыто — in_progress>
