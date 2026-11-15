@@ -196,5 +196,19 @@ class CatalogTests(unittest.TestCase):
 
 
 
+
+    def test_session_template_ensures_handoff_provenance_slots(self):
+        # Regression guard: docs generator really includes D0.6 claim-level fields.
+        session = self.parsed("new-session")
+        content = Path(session["path"]).read_text(encoding="utf-8")
+        self.assertIn("## 2a. Значимые решения и ограничения — происхождение (D0.6)", content)
+        self.assertIn("| claim | origin / evidence_ref | authority | scope / valid_until | confirmation |", content)
+        self.assertIn("agent_proposal", content)
+        self.assertIn("needs_confirmation", content)
+        self.assertIn("handoff_only", content)
+        self.assertIn("Сверка утверждений при получении", content)
+        self.assertNotIn("S-YYYYMMDDThhmmssZ-<12hex>", content)
+
+
 if __name__ == "__main__":
     unittest.main()
