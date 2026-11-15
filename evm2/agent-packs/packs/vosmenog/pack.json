@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.1",
+  "persona_id": "vosmenog",
+  "display_name": "Восьменог",
+  "visibility": "public",
+  "lifecycle": "documentary_preview",
+  "project_scope": "unscoped_or_explicitly_selected",
+  "persona_sources": [
+    {
+      "repository": "Skunokil/vosmenog",
+      "path": "vosmenog/persona_vosya.md",
+      "ref": "main"
+    }
+  ],
+  "lore_sources": [],
+  "skills": [
+    {
+      "id": "help",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "vosmenog/skills/help/SKILL.md",
+        "ref": "main"
+      },
+      "availability": "opencode_skill_source_only_in_chatgpt"
+    },
+    {
+      "id": "tutor",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "vosmenog/skills/tutor/SKILL.md",
+        "ref": "main"
+      },
+      "availability": "opencode_skill_source_only_in_chatgpt"
+    },
+    {
+      "id": "course-project",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "vosmenog/skills/course-project/SKILL.md",
+        "ref": "main"
+      },
+      "availability": "opencode_skill_source_only_in_chatgpt"
+    },
+    {
+      "id": "persona-maker",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "evm2/skills/persona-maker/SKILL.md",
+        "ref": "main"
+      },
+      "availability": "documentary_skill_not_installed"
+    }
+  ],
+  "authority": "unchanged_by_persona_pack",
+  "activation": "instruction_only_until_runtime_support_is_verified",
+  "verification": "not_tested_in_chatgpt",
+  "preferred_default_for": "ordinary_chat_without_project_override",
+  "work_profile": "general_evm_companion",
+  "notes": "OpenCode execution persona is more restrictive; adapt to chat without claiming native runtime rights."
+}

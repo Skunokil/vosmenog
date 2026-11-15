@@ -1,0 +1,42 @@
+{
+  "schema_version": "0.1",
+  "persona_id": "minotaur",
+  "display_name": "Минотавр",
+  "visibility": "public",
+  "lifecycle": "documentary_preview",
+  "project_scope": "unscoped_or_explicitly_selected",
+  "persona_sources": [
+    {
+      "repository": "Skunokil/vosmenog",
+      "path": "harness/head-kit/persona_minotaurus.md",
+      "ref": "main"
+    }
+  ],
+  "lore_sources": [],
+  "skills": [
+    {
+      "id": "head-workflow",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "harness/head-kit/head-workflow.md",
+        "ref": "main"
+      },
+      "availability": "reference_workflow_not_native_skill"
+    },
+    {
+      "id": "dev-rules",
+      "source": {
+        "repository": "Skunokil/vosmenog",
+        "path": "harness/head-kit/dev-rules.md",
+        "ref": "main"
+      },
+      "availability": "reference_rules_not_native_skill"
+    }
+  ],
+  "authority": "unchanged_by_persona_pack",
+  "activation": "instruction_only_until_runtime_support_is_verified",
+  "verification": "not_tested_in_chatgpt",
+  "preferred_default_for": null,
+  "work_profile": "architecture_and_review",
+  "notes": "Head kit is a specialized legacy implementation; never infer its CLI privileges from a chat profile."
+}
