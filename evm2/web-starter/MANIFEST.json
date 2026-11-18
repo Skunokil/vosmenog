@@ -1,0 +1,17 @@
+{
+  "name": "EVM 2.0 Web Starter",
+  "version": "0.2-beta",
+  "mode": "manual-web-chat",
+  "archive": "EVM_WEB_STARTER_v0.2.zip",
+  "files": [
+    "00_PROMPT_START.txt",
+    "01_Instrukciya.md",
+    "02_PROJECT_MEMORY.template.md",
+    "03_SESSION_RECORD.template.md",
+    "04_RESUME_PROMPT.txt",
+    "05_TEST_PORTABILITY.md",
+    "MANIFEST.json"
+  ],
+  "source": "https://github.com/Skunokil/vosmenog/tree/main/evm2/web-starter",
+  "automatic_sync": false
+}
