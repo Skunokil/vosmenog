@@ -26,6 +26,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p 'test_evm_docs.py' -v
           python3 -m unittest discover -s tests -p 'test_evm_session_hooks.py' -v
+      - name: Web Starter distribution tests
+        run: python3 -m unittest discover -s tests -p 'test_web_starter.py' -v
       - name: Persona Pack source and visibility tests
         run: python3 -m unittest discover -s tests -p 'test_evm_persona_packs.py' -v
       - name: Shell and boundary checks
