@@ -61,19 +61,7 @@ done
 if [ "$HARNESS_ONLY" = "1" ]; then : > "$AGENT_OS/.harness-only"; ok "режим --harness-only (метка agent-os/.harness-only: update.sh её уважает)"; else rm -f "$AGENT_OS/.harness-only"; fi
 
 if [ "$HARNESS_ONLY" != "1" ]; then
-PERSONA_FILE="persona_vosya.md"
-if [ -f "$VOS/$PERSONA_FILE" ]; then
-  if [ ! -f "$AGENT_OS/$PERSONA_FILE" ]; then
-    cp "$VOS/$PERSONA_FILE" "$AGENT_OS/"
-    ok "agent-os/$PERSONA_FILE (установлен)"
-  else
-    warn "agent-os/$PERSONA_FILE уже есть — не перезаписан. Правь через проект, не в обход."
-  fi
-fi
-
-cp "$VOS/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"; ok "agents/Vosmenog.md"
-else
-  warn "--harness-only: персона Воси и агент Vosmenog пропущены"
+  python3 "$VOS/install-instructions.py" "$OC_CONF" "$AGENT_OS"
 fi
 
 # Единый вход (EPIC-026 Ф3): команда evm и её помощник projects-index.py.
@@ -144,7 +132,6 @@ fi
 cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md"
 cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md"
 cp "$HARNESS/session-record.template.md" "$MEMORY/session-record.template.md"; ok "memory/session-record.template.md"
-[ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
 cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
 cp "$HARNESS/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений: раньше его ставил только update.sh, и новый пользователь не получал уведомлений)"
 if [ ! -f "$MEMORY/journal.md" ]; then
@@ -213,7 +200,9 @@ say "Периметр: что агент НЕ должен трогать"
 echo "  Назови каталоги прода/секретов через пробел (агенту закроется доступ)."
 echo "  Пример: ~/prod-stack ~/secrets   |   Enter — пропустить."
 read -r -p "  Каталоги: " PERIM || true
-if [ -n "${PERIM:-}" ]; then
+if [ -n "${PERIM:-}" ] && [ -L "$AGENTS/Vosmenog.md" ]; then
+  die "Профиль агента — пользовательская ссылка. Настройте ограничения в своём профиле."
+elif [ -n "${PERIM:-}" ]; then
   # BUG-10: валидация — оставляем только токены-пути (~/... или /...), мусор отсекаем
   CLEAN=""
   for tok in $PERIM; do
@@ -297,4 +286,6 @@ else
   echo
   echo "  Дальше — GUIDE.md, раздел «Первый эпик»."
 fi
-if [ -n "${PERIM:-}" ]; then echo "  Периметр закрыт для: $PERIM"; fi
+if [ -n "${PERIM:-}" ] && [ -L "$AGENTS/Vosmenog.md" ]; then
+  die "Профиль агента — пользовательская ссылка. Настройте ограничения в своём профиле."
+elif [ -n "${PERIM:-}" ]; then echo "  Периметр закрыт для: $PERIM"; fi

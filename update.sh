@@ -95,36 +95,8 @@ for f in $DOCS; do
     cp "$SRC_F" "$AGENT_OS/"; ok "agent-os/$f"
   fi
 done
-# 2-bis. персона: раскатывается с УМНОЙ защитой.
-#   Раньше персона не обновлялась никогда («защищена от затирания») — при
-#   git-клоне её подтягивал pull, а после снятия .git защита превратилась в
-#   заморозку: правки дистрибутива до агента не доезжали.
-#   Теперь: помним хеш того, что раскатали в прошлый раз. Совпадает с тем, что
-#   лежит → человек не трогал, спокойно обновляем. Не совпадает → правил
-#   человек, не трогаем и говорим об этом вслух.
 if [ "$HARNESS_ONLY" != "1" ]; then
-PERSONA="persona_vosya.md"
-PERSONA_HASH_FILE="$OC_CONF/.vosmenog-persona-hash"
-if [ -f "$VOS/$PERSONA" ]; then
-  [ -L "$AGENT_OS/$PERSONA" ] && rm -f "$AGENT_OS/$PERSONA"
-  if [ ! -f "$AGENT_OS/$PERSONA" ]; then
-    cp "$VOS/$PERSONA" "$AGENT_OS/$PERSONA"
-    md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
-    ok "agent-os/$PERSONA (персона поставлена)"
-  else
-    CUR="$(md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1)"
-    PREV="$(cat "$PERSONA_HASH_FILE" 2>/dev/null || true)"
-    if [ -n "$PREV" ] && [ "$CUR" != "$PREV" ]; then
-      warn "$PERSONA правлена руками — НЕ обновляю (твоя настройка голоса важнее)."
-      printf '        diff %s %s\n' "$AGENT_OS/$PERSONA" "$VOS/$PERSONA"
-      printf '        правку стоит перенести в источник, иначе она не переживёт переустановку\n'
-    else
-      cp "$VOS/$PERSONA" "$AGENT_OS/$PERSONA"
-      md5sum < "$AGENT_OS/$PERSONA" | cut -d' ' -f1 > "$PERSONA_HASH_FILE"
-      ok "agent-os/$PERSONA (персона обновлена)"
-    fi
-  fi
-fi
+  python3 "$VOS/install-instructions.py" "$OC_CONF" "$AGENT_OS"
 fi
 
 if [ -d "$HARNESS/method" ]; then
@@ -135,10 +107,6 @@ cp "$HARNESS/STARTUP.md" "$MEMORY/STARTUP.md"; ok "memory/STARTUP.md (прото
 cp "$HARNESS/next-session.template.md" "$MEMORY/next-session.template.md"; ok "memory/next-session.template.md (шаблон горячей памяти)"
 cp "$HARNESS/session-record.template.md" "$MEMORY/session-record.template.md"; ok "memory/session-record.template.md (шаблон сессии)"
 
-# 2a. глобальный слот инструкций opencode.
-#     opencode берёт первый существующий из [<config>/AGENTS.md, ~/.claude/CLAUDE.md]:
-#     пустой первый слот = чужой роутер (Claude Code) затекает в контекст агента.
-[ "$HARNESS_ONLY" = "1" ] || { cp "$VOS/global-AGENTS.md" "$OC_CONF/AGENTS.md"; ok "AGENTS.md (глобальный слот инструкций)"; }
 cp "$HARNESS/memory-guard.sh" "$MEMORY/memory-guard.sh"; chmod +x "$MEMORY/memory-guard.sh"; ok "memory/memory-guard.sh (сторож бюджета памяти)"
 cp "$HARNESS/update-check.sh" "$MEMORY/update-check.sh"; chmod +x "$MEMORY/update-check.sh"; ok "memory/update-check.sh (сторож обновлений)"
 
@@ -151,52 +119,6 @@ fi
 if [ "$HARNESS_ONLY" != "1" ] && [ -d "$VOS/skills" ]; then
   mkdir -p "$SKILLS"
   cp -r "$VOS/skills/." "$SKILLS/"; ok "skills/ Восьменога (tutor, help, course-project)"
-fi
-
-# 2c. раскатать конфиг агента (agents/Vosmenog.md)
-#     с ПЕРЕНОСОМ локального периметра: deny на боевые каталоги,
-#     дописанные setup.sh, переносятся в свежий конфиг.
-if [ "$HARNESS_ONLY" != "1" ] && [ -f "$VOS/agents/Vosmenog.md" ]; then
-  mkdir -p "$AGENTS"
-  TMP_DENY=""
-  if [ -f "$AGENTS/Vosmenog.md" ]; then
-    TMP_DENY="$(mktemp)"
-    python3 - "$AGENTS/Vosmenog.md" "$VOS/agents/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
-import re, sys
-live, payload, out = sys.argv[1], sys.argv[2], sys.argv[3]
-def denies(src):
-    return set(re.findall(r'^\s{4}"([^"]+)": deny', src, re.M))
-# deny периметра = те, что есть в живом, но нет в дистрибутиве
-local = denies(open(live).read()) - denies(open(payload).read())
-# оставляем только пути (~/ или /); внутренние deny дистрибутива не трогаем
-keep = sorted(p for p in local if p.startswith("~/") or p.startswith("/"))
-open(out, "w").write("\n".join(keep))
-PYEOF
-  fi
-  cp "$VOS/agents/Vosmenog.md" "$AGENTS/Vosmenog.md"
-  if [ -n "$TMP_DENY" ] && [ -s "$TMP_DENY" ]; then
-    python3 - "$AGENTS/Vosmenog.md" "$TMP_DENY" << 'PYEOF'
-import sys
-vfile, denies_file = sys.argv[1], sys.argv[2]
-src = open(vfile).read()
-marker = "    # При установке сюда дописываются"
-lines = []
-for p in open(denies_file):
-    p = p.strip()
-    if p:
-        rule = f'    "{p}": deny'
-        if rule not in src:
-            lines.append(rule)
-if lines and marker in src:
-    src = src.replace(marker, "\n".join(lines) + "\n" + marker, 1)
-    open(vfile, "w").write(src)
-    print("  перенесено deny:", ", ".join(p.strip() for p in open(denies_file) if p.strip()))
-else:
-    print("  нет локального периметра — переносить нечего")
-PYEOF
-  fi
-  [ -n "$TMP_DENY" ] && rm -f "$TMP_DENY"
-  ok "agents/Vosmenog.md (права и периметр)"
 fi
 
 # 2d. кит головы (метод-контент для веб-Клода / Минотавра)
