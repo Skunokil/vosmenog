@@ -28,7 +28,10 @@ class WebStarterTests(unittest.TestCase):
     def test_entry_and_first_prompt(self):
         entry = (ROOT / "ENTRY.md").read_text(encoding="utf-8")
         prompt = (PACK / "00_PROMPT_START.txt").read_text(encoding="utf-8")
-        self.assertIn("web-starter/README.md", entry)
+        for route in ("WEB_PROJECT.md", "WEB_TO_AGENT.md", "EXISTING_AGENT.md"):
+            self.assertIn(f"evm2/{route}", entry)
+            self.assertTrue((ROOT / "evm2" / route).is_file())
+        self.assertIn("https://transformatornaya.ru/evm-method/", entry)
         self.assertIn("EVM_WEB_STARTER_v0.2.zip", prompt)
         self.assertIn("ОДИН первый шаг", prompt)
         self.assertIn("Не придумывай", prompt)
